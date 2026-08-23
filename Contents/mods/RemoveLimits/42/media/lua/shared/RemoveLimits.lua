@@ -66,6 +66,18 @@ local function effectiveCharacterCapacity(character)
     return native
 end
 
+local function configuredFreeCharacterCapacity(character)
+    if not character or not instanceof or not instanceof(character, "IsoPlayer") or characterMode() == 1 then
+        return nil
+    end
+    local inventory = safeCall(function() return character:getInventory() end, nil)
+    if not inventory then return nil end
+    local limit = effectiveCharacterCapacity(character)
+    local weight = tonumber(safeCall(function() return inventory:getCapacityWeight() end, nil))
+    if not limit or not weight then return nil end
+    return math.max(0, limit - weight)
+end
+
 local function classify(container)
     if container:getType() == "floor" then
         return "floor"
@@ -258,18 +270,6 @@ local function installCharacterCapacityAccessors()
     originalCharacterGetMaxWeightBase = methods.getMaxWeightBase
     originalCharacterSetMaxWeightBase = methods.setMaxWeightBase
 
-    local function configuredFreeCapacity(character)
-        if not instanceof or not instanceof(character, "IsoPlayer") or characterMode() == 1 then
-            return nil
-        end
-        local inventory = character:getInventory()
-        if not inventory then return nil end
-        local limit = effectiveCharacterCapacity(character)
-        local weight = tonumber(inventory:getCapacityWeight())
-        if not limit or not weight then return nil end
-        return math.max(0, limit - weight)
-    end
-
     local function patchFluidAccessors(targetMethods, className)
         if not targetMethods
             or type(targetMethods.hasFullInventory) ~= "function"
@@ -285,12 +285,12 @@ local function installCharacterCapacityAccessors()
         rawset(targetMethods, FREE_INVENTORY_CAPACITY_PATCH_KEY, originalGetFreeInventoryCapacity)
 
         targetMethods.getFreeInventoryCapacity = function(character)
-            local configured = configuredFreeCapacity(character)
+            local configured = configuredFreeCharacterCapacity(character)
             if configured ~= nil then return configured end
             return originalGetFreeInventoryCapacity(character)
         end
         targetMethods.hasFullInventory = function(character)
-            local configured = configuredFreeCapacity(character)
+            local configured = configuredFreeCharacterCapacity(character)
             if configured ~= nil then return configured <= 0 end
             return originalHasFullInventory(character)
         end
@@ -486,6 +486,7 @@ end
 
 RemoveLimits = RemoveLimits or {}
 RemoveLimits.applyCharacterCapacity = applyCharacterCapacity
+RemoveLimits.getFreeCharacterCapacity = configuredFreeCharacterCapacity
 
 -- Manual test helper. It creates exactly one item when explicitly called and
 -- never registers an update event or adds the item to normal loot tables.

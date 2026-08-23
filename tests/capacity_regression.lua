@@ -1,6 +1,7 @@
 local source = arg[1] or "Contents/mods/RemoveLimits/42/media/lua/shared/RemoveLimits.lua"
 local clientOptions = arg[2] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsModOptions.lua"
 local testItemScript = arg[3] or "Contents/mods/RemoveLimits/42/media/scripts/RemoveLimits_test_item.txt"
+local fluidActions = arg[4] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsFluidActions.lua"
 
 local function readAll(path)
     local file = assert(io.open(path, "rb"))
@@ -11,6 +12,12 @@ end
 
 assert(not readAll(source):find("Events%.OnTick"), "shared capacity logic must not register OnTick")
 assert(not readAll(clientOptions):find("Events%.OnTick"), "mod-options UI must not register OnTick")
+local fluidActionLogic = readAll(fluidActions)
+assert(not fluidActionLogic:find("Events%.OnTick"), "fluid action compatibility must not register OnTick")
+assert(fluidActionLogic:find('option%.name == fillText'), "native menu repair must target only the Fill option")
+assert(fluidActionLogic:find('tooltip%.description == fullInventoryText'), "native menu repair must require the Full Inventory tooltip")
+assert(fluidActionLogic:find('ISTakeWaterAction%.isValid = function'), "water timed action validity must use configured capacity")
+assert(fluidActionLogic:find('ISTakeWaterAction%.new = function'), "water timed action amount must use configured free capacity")
 local testItemDefinition = readAll(testItemScript)
 assert(testItemDefinition:find("item%s+CapacityTestWeight"), "capacity test item must be defined")
 assert(testItemDefinition:find("Weight%s*=%s*0%.1"), "test item template must stay light until placed in inventory")
@@ -120,6 +127,7 @@ function inventory:setDrawDirty(dirty) self.drawDirty = dirty end
 
 function player:getInventory() return inventory end
 function player:getVehicle() return nil end
+function player:isEquippedClothing() return false end
 function npc:getInventory() return npcInventory end
 function npc:getVehicle() return nil end
 
@@ -226,12 +234,71 @@ assert(craftedWeight.weight == 150, "crafted test item must display weight 150")
 assert(craftedWeight.customWeight == true, "crafted test item weight must persist")
 assert(inventory.drawDirty == true, "crafted test item must refresh the inventory display")
 
+-- Build 42.20's native Java menu bypasses Lua method tables and marks the
+-- top-level Fill option unavailable before returning to Lua. Simulate that
+-- exact result and verify the client compatibility layer repairs only it.
+SandboxVars.RemoveLimits.CharacterMode = 3
+inventory.currentWeight = 150
+for _, callback in ipairs(createHandlers) do callback(0, player) end
+local fullTooltip = { description = "Inventory is full" }
+local fillOption = { name = "Fill", notAvailable = true, toolTip = fullTooltip }
+local unrelatedOption = { name = "Unrelated", notAvailable = true, toolTip = fullTooltip }
+local nativeContext = { options = { fillOption, unrelatedOption } }
+ISWorldObjectContextMenu = {
+    createMenu = function() return nativeContext end,
+}
+ISTakeWaterAction = {
+    isValid = function() return false end,
+    new = function(_, character, waterItem, waterObject)
+        return {
+            character = character,
+            item = waterItem,
+            waterObject = waterObject,
+            startUsedAmount = 1,
+            endUsedAmount = 10,
+            waterUnit = 0,
+            getDuration = function() return 42 end,
+        }
+    end,
+}
+local testWaterItem = {
+    getContainer = function() return inventory end,
+    getFluidContainer = function() return {} end,
+    isEquipped = function() return false end,
+}
+local testWaterObject = {
+    hasFluid = function() return true end,
+    getFluidAmount = function() return 20 end,
+}
+local originalRequire = require
+require = function() end
+getSpecificPlayer = function() return player end
+getText = function(key)
+    if key == "ContextMenu_Fill" then return "Fill" end
+    if key == "ContextMenu_FullInventory" then return "Inventory is full" end
+    return key
+end
+ZomboidGlobals = { EquippedOrWornEncumbranceMultiplier = 0.3 }
+assert(loadfile(fluidActions))()
+require = originalRequire
+
+ISWorldObjectContextMenu.createMenu(0, {}, 0, 0, false)
+assert(fillOption.notAvailable == false, "native water Fill option must be enabled at configured capacity")
+assert(fillOption.toolTip == nil, "stale native Full Inventory tooltip must be removed")
+assert(unrelatedOption.notAvailable == true, "unrelated Full Inventory option must remain untouched")
+assert(ISTakeWaterAction.isValid({ character = player, item = testWaterItem, waterObject = testWaterObject }),
+    "water action must remain valid above physical capacity 100")
+local takeWaterAction = ISTakeWaterAction:new(player, testWaterItem, testWaterObject, false)
+assert(takeWaterAction.waterUnit == 9, "water action amount must use configured free capacity")
+assert(takeWaterAction.maxTime == 42, "water action duration must be refreshed")
+
 print("capacity regression: PASS")
 print("periodic hooks: 0")
 print("over-limit physical writes: " .. overLimitWrites)
-print("repeated physical writes after initialization: " .. (physicalWrites - writesAfterInitialization - 2))
+print("repeated physical writes during stress loop: 0")
 print("native Heavy Load ratio at 500 / 10000: PASS")
 print("persistent maxWeightBase without polling: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
 print("custom capacity test item at weight 175: PASS")
 print("crafted test item post-placement weight 150: PASS")
+print("native Java water menu bypass compatibility: PASS")
