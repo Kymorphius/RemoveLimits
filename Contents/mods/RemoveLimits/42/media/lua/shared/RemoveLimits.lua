@@ -182,6 +182,22 @@ local function configuredContainerCapacity(container, character, vanillaCapacity
     return math.max(1, vanillaCapacity * math.max(1, numberSetting("ContainerMultiplier", 2)))
 end
 
+local function configuredEffectiveCapacity(container, character, vanillaCapacity)
+    if classify(container) ~= "character" or characterMode() == 1 then
+        return configuredContainerCapacity(container, character, vanillaCapacity)
+    end
+
+    -- Both the legacy RecipeManager path and Build 42's CraftRecipe path
+    -- finish in Actions.addOrDropItem(). Vanilla adds the crafted output,
+    -- then compares getCapacityWeight() with getEffectiveCapacity() and drops
+    -- the item on the floor when the latter still reports the physical Java
+    -- limit of 100. Override only this logical/effective accessor; getCapacity
+    -- continues to expose the physical value needed for durable restoration.
+    local owner = safeCall(function() return container:getParent() end, nil)
+    local configured = effectiveCharacterCapacity(owner or character)
+    return configured or vanillaCapacity
+end
+
 local function unpackHasRoomArguments(...)
     local count = select("#", ...)
     if count >= 2 then
@@ -436,7 +452,7 @@ local function installPatch()
         local vanillaCapacity = safeCall(function()
             return originalGetEffectiveCapacity(container, character)
         end, safeCall(function() return originalGetCapacity(container) end, 0))
-        return configuredContainerCapacity(container, character, vanillaCapacity)
+        return configuredEffectiveCapacity(container, character, vanillaCapacity)
     end
     methods.getMaxWeight = function(container)
         local vanillaCapacity = safeCall(function() return originalGetMaxWeight(container) end, 0)
@@ -587,9 +603,9 @@ function RemoveLimits.addCapacityTestItem(weight, player)
     return item
 end
 
--- The scripted item stays light until the crafting system has placed it in
--- the character inventory. The one-shot recipe callback then applies the real
--- test weight, avoiding Build 42's pre-output fallback to the floor.
+-- Keep the test item's custom weight explicit after crafting as well. The item
+-- definition itself already weighs 150, so crafting it now exercises the same
+-- generic Actions.addOrDropItem path as every other recipe.
 function RemoveLimits.onCreateCapacityTestWeight(craftRecipeData, character)
     if not craftRecipeData then return end
     local createdItems = safeCall(function() return craftRecipeData:getAllCreatedItems() end, nil)

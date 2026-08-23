@@ -21,8 +21,8 @@ assert(fluidActionLogic:find('ISTakeWaterAction%.new = function'), "water timed 
 assert(fluidActionLogic:find('ISTakeWaterAction%.transferFluid = function'), "water transfer must use the native fluid bridge")
 local testItemDefinition = readAll(testItemScript)
 assert(testItemDefinition:find("item%s+CapacityTestWeight"), "capacity test item must be defined")
-assert(testItemDefinition:find("Weight%s*=%s*0%.1"), "test item template must stay light until placed in inventory")
-assert(testItemDefinition:find("OnCreate%s*=%s*RemoveLimits%.onCreateCapacityTestWeight"), "test recipe must apply weight after placement")
+assert(testItemDefinition:find("Weight%s*=%s*150"), "test item must exercise heavy-output placement directly")
+assert(testItemDefinition:find("OnCreate%s*=%s*RemoveLimits%.onCreateCapacityTestWeight"), "test recipe must preserve its custom weight")
 assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recipe must consume one ripped sheet")
 assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
@@ -169,6 +169,9 @@ assert(maxWeightFieldWrites == 1, "maxWeight must be written once when the playe
 assert(maxWeightBaseFieldWrites == 1, "maxWeightBase must be written once when the player enters")
 assert(npc:getMaxWeight() == 12, "NPC maxWeight must remain vanilla")
 assert(inventory.rawCapacity == 100, "unlimited physical player capacity must be 100")
+assert(inventory:getCapacity() == 100, "raw player capacity accessor must remain at the physical limit")
+assert(inventory:getEffectiveCapacity(player) == 10000,
+    "generic crafted-output placement must compare against the logical player capacity")
 assert(containerMethods.hasRoomFor(inventory, player, item), "unlimited player transfer must be allowed")
 assert(vanillaHasRoomCalls == 0, "unlimited success path must not call vanilla hasRoomFor")
 
@@ -182,6 +185,8 @@ end
 inventory.currentWeight = 500
 assert(player.rawMaxWeight == 10000, "native recalculation must preserve configured capacity")
 assert(inventory.currentWeight / player.rawMaxWeight < 1, "500 / 10000 must not trigger Heavy Load")
+assert(inventory:getCapacityWeight() <= inventory:getEffectiveCapacity(player),
+    "vanilla Actions.addOrDropItem must keep crafted outputs above physical capacity 100")
 assert(not player:hasFullInventory(), "fluid actions must not see a full inventory above physical capacity 100")
 assert(player:getFreeInventoryCapacity() == 9500, "fluid actions must see native character free capacity")
 assert(vanillaHasFullInventoryCalls == 0, "configured fluid full check must bypass physical capacity 100")
@@ -216,6 +221,7 @@ for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 30, "custom player display capacity")
 assert(player.rawMaxWeightBase == 30, "custom native recalculation source")
 assert(inventory.rawCapacity == 30, "custom physical capacity below 100")
+assert(inventory:getEffectiveCapacity(player) == 30, "custom crafted-output limit")
 player.rawMaxWeight = 52 -- another carry mod may raise the native result
 inventory.currentWeight = 25
 assert(not containerMethods.hasRoomFor(inventory, player, item), "custom limit must reject excess weight")
@@ -229,6 +235,7 @@ for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 8, "vanilla player display capacity")
 assert(player.rawMaxWeightBase == 8, "vanilla maxWeightBase restoration")
 assert(inventory.rawCapacity == 50, "vanilla physical capacity restoration")
+assert(inventory:getEffectiveCapacity(player) == 50, "vanilla crafted-output capacity must be restored")
 assert(not containerMethods.hasRoomFor(inventory, player, item), "vanilla mode must delegate hasRoomFor")
 player:hasFullInventory()
 player:getFreeInventoryCapacity()
@@ -369,5 +376,6 @@ print("native Heavy Load ratio at 500 / 10000: PASS")
 print("persistent maxWeightBase without polling: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
 print("custom capacity test item at weight 175: PASS")
-print("crafted test item post-placement weight 150: PASS")
+print("generic crafted-output placement above physical capacity 100: PASS")
+print("crafted test item direct weight 150: PASS")
 print("native Java water menu bypass compatibility: PASS")

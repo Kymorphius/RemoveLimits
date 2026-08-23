@@ -5,7 +5,7 @@ module RemoveLimits
         DisplayName = Infinite Capacity Test Weight (150),
         DisplayCategory = Material,
         ItemType = base:normal,
-        Weight = 0.1,
+        Weight = 150,
         Icon = Dumbbell,
     }
 
