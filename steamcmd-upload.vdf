@@ -73,17 +73,7 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 [h2]IDs / 编号[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "v1.3.1
-• Fixed FPS degradation and warning-log spam caused by repeatedly writing character ItemContainer capacity above Build 42's hard limit of 100.
-• Carry weight is now written once to the character's native maxWeightBase/maxWeight when entering the world; no polling or periodic overwrite.
-• Fixed filling water containers, taking fuel, milking, and related actions when carried weight is above 100.
-• Clarified the settings as Carry Weight, Transfer Weight, and Vehicle Cargo Mass.
-• Improved compatibility with ExtraWeightCapacity and CardSystemMod.
+    "changenote"       "Artwork update: replaced the detailed illustration with a simpler flat symbolic logo for better recognition at thumbnail size.
 
-v1.3.1
-• 修复反复写入超过 Build 42 人物 ItemContainer 硬上限 100 所导致的掉帧和警告刷屏。
-• 进入世界时仅一次写入人物原生 maxWeightBase/maxWeight；不轮询、不周期覆盖。
-• 修复携带重量超过 100 后无法装水、取油、挤奶及相关动作的问题。
-• 设置明确分为携带重量、转移重量和车辆货物质量。
-• 改善与 ExtraWeightCapacity、CardSystemMod 的兼容性。"
+图片更新：将精细插画替换为更简洁的平面符号 Logo，提升缩略图尺寸下的识别度。"
 }
