@@ -13,7 +13,8 @@ assert(not readAll(source):find("Events%.OnTick"), "shared capacity logic must n
 assert(not readAll(clientOptions):find("Events%.OnTick"), "mod-options UI must not register OnTick")
 local testItemDefinition = readAll(testItemScript)
 assert(testItemDefinition:find("item%s+CapacityTestWeight"), "capacity test item must be defined")
-assert(testItemDefinition:find("Weight%s*=%s*150"), "capacity test item must weigh 150")
+assert(testItemDefinition:find("Weight%s*=%s*0%.1"), "test item template must stay light until placed in inventory")
+assert(testItemDefinition:find("OnCreate%s*=%s*RemoveLimits%.onCreateCapacityTestWeight"), "test recipe must apply weight after placement")
 assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recipe must consume one ripped sheet")
 assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
@@ -210,6 +211,21 @@ assert(testWeight.weight == 175, "test helper must update the displayed item wei
 assert(testWeight.customWeight == true, "test helper weight must be persisted as custom")
 assert(inventory.drawDirty == true, "test helper must refresh the inventory display")
 
+inventory.drawDirty = false
+local craftedWeight = inventory:AddItem("RemoveLimits.CapacityTestWeight")
+local createdItems = {
+    size = function() return 1 end,
+    get = function(_, index) if index == 0 then return craftedWeight end end,
+}
+local craftRecipeData = {
+    getAllCreatedItems = function() return createdItems end,
+}
+RemoveLimits.onCreateCapacityTestWeight(craftRecipeData, player)
+assert(craftedWeight.actualWeight == 150, "crafted test item must gain weight after inventory placement")
+assert(craftedWeight.weight == 150, "crafted test item must display weight 150")
+assert(craftedWeight.customWeight == true, "crafted test item weight must persist")
+assert(inventory.drawDirty == true, "crafted test item must refresh the inventory display")
+
 print("capacity regression: PASS")
 print("periodic hooks: 0")
 print("over-limit physical writes: " .. overLimitWrites)
@@ -218,3 +234,4 @@ print("native Heavy Load ratio at 500 / 10000: PASS")
 print("persistent maxWeightBase without polling: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
 print("custom capacity test item at weight 175: PASS")
+print("crafted test item post-placement weight 150: PASS")

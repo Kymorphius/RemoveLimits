@@ -5,7 +5,7 @@ module RemoveLimits
         DisplayName = Infinite Capacity Test Weight (150),
         DisplayCategory = Material,
         ItemType = base:normal,
-        Weight = 150,
+        Weight = 0.1,
         Icon = Dumbbell,
     }
 
@@ -15,6 +15,7 @@ module RemoveLimits
         NeedToBeLearn = false,
         Tags = InHandCraft;CanBeDoneInDark,
         time = 5,
+        OnCreate = RemoveLimits.onCreateCapacityTestWeight,
         inputs
         {
             item 1 [Base.RippedSheets],
