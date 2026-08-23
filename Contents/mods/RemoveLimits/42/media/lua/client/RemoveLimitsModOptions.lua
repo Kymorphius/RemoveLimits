@@ -12,6 +12,8 @@ if PZAPI.ModOptions:getOptions(MOD_OPTIONS_ID) then return end
 
 local options = PZAPI.ModOptions:create(MOD_OPTIONS_ID, "UI_RemoveLimits_Name")
 options:addDescription("UI_RemoveLimits_SyncDescription")
+options:addSeparator()
+options:addDescription("UI_RemoveLimits_CarryWeightSection")
 
 local characterMode = options:addComboBox("CharacterMode", "UI_RemoveLimits_CharacterMode", "UI_RemoveLimits_CharacterMode_Tooltip")
 characterMode:addItem("UI_RemoveLimits_Mode_Vanilla", false)
@@ -21,6 +23,7 @@ characterMode:addItem("UI_RemoveLimits_Mode_Unlimited", true)
 local characterLimit = options:addTextEntry("CharacterCapacityLimit", "UI_RemoveLimits_CharacterCapacityLimit", "100", "UI_RemoveLimits_CharacterCapacityLimit_Tooltip")
 
 options:addSeparator()
+options:addDescription("UI_RemoveLimits_TransferWeightSection")
 
 local containerMode = options:addComboBox("ContainerMode", "UI_RemoveLimits_ContainerMode", "UI_RemoveLimits_ContainerMode_Tooltip")
 containerMode:addItem("UI_RemoveLimits_Mode_Vanilla", false)
@@ -31,6 +34,10 @@ local containerMultiplier = options:addTextEntry("ContainerMultiplier", "UI_Remo
 local affectBags = options:addTickBox("AffectBags", "UI_RemoveLimits_AffectBags", true, "UI_RemoveLimits_AffectBags_Tooltip")
 local affectWorldContainers = options:addTickBox("AffectWorldContainers", "UI_RemoveLimits_AffectWorldContainers", true, "UI_RemoveLimits_AffectWorldContainers_Tooltip")
 local affectVehicles = options:addTickBox("AffectVehicles", "UI_RemoveLimits_AffectVehicles", true, "UI_RemoveLimits_AffectVehicles_Tooltip")
+
+options:addSeparator()
+options:addDescription("UI_RemoveLimits_VehicleMassSection")
+
 local ignoreVehicleCargoMass = options:addTickBox("IgnoreVehicleCargoMass", "UI_RemoveLimits_IgnoreVehicleCargoMass", true, "UI_RemoveLimits_IgnoreVehicleCargoMass_Tooltip")
 
 local editableOptions = {
