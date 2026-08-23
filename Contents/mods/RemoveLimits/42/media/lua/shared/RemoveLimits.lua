@@ -19,8 +19,6 @@ local originalCharacterGetMaxWeight = nil
 local originalCharacterSetMaxWeight = nil
 local originalCharacterGetMaxWeightBase = nil
 local originalCharacterSetMaxWeightBase = nil
-local originalCharacterHasFullInventory = nil
-local originalCharacterGetFreeInventoryCapacity = nil
 local vehicleMassFailureReported = false
 
 local function sandboxValues()
@@ -250,9 +248,7 @@ local function installCharacterCapacityAccessors()
         or type(methods.getMaxWeight) ~= "function"
         or type(methods.setMaxWeight) ~= "function"
         or type(methods.getMaxWeightBase) ~= "function"
-        or type(methods.setMaxWeightBase) ~= "function"
-        or type(methods.hasFullInventory) ~= "function"
-        or type(methods.getFreeInventoryCapacity) ~= "function" then
+        or type(methods.setMaxWeightBase) ~= "function" then
         print("[RemoveLimits] IsoGameCharacter capacity fields are unavailable; character capacity patch not installed")
         return
     end
@@ -261,17 +257,6 @@ local function installCharacterCapacityAccessors()
     originalCharacterSetMaxWeight = methods.setMaxWeight
     originalCharacterGetMaxWeightBase = methods.getMaxWeightBase
     originalCharacterSetMaxWeightBase = methods.setMaxWeightBase
-
-    if methods[HAS_FULL_INVENTORY_PATCH_KEY] then
-        originalCharacterHasFullInventory = methods[HAS_FULL_INVENTORY_PATCH_KEY]
-        originalCharacterGetFreeInventoryCapacity = methods[FREE_INVENTORY_CAPACITY_PATCH_KEY]
-        return
-    end
-
-    originalCharacterHasFullInventory = methods.hasFullInventory
-    originalCharacterGetFreeInventoryCapacity = methods.getFreeInventoryCapacity
-    methods[HAS_FULL_INVENTORY_PATCH_KEY] = originalCharacterHasFullInventory
-    methods[FREE_INVENTORY_CAPACITY_PATCH_KEY] = originalCharacterGetFreeInventoryCapacity
 
     local function configuredFreeCapacity(character)
         if not instanceof or not instanceof(character, "IsoPlayer") or characterMode() == 1 then
@@ -285,17 +270,49 @@ local function installCharacterCapacityAccessors()
         return math.max(0, limit - weight)
     end
 
-    methods.getFreeInventoryCapacity = function(character)
-        local configured = configuredFreeCapacity(character)
-        if configured ~= nil then return configured end
-        return originalCharacterGetFreeInventoryCapacity(character)
+    local function patchFluidAccessors(targetMethods, className)
+        if not targetMethods
+            or type(targetMethods.hasFullInventory) ~= "function"
+            or type(targetMethods.getFreeInventoryCapacity) ~= "function" then
+            print("[RemoveLimits] " .. className .. " fluid accessors are unavailable; patch not installed")
+            return false
+        end
+        if rawget(targetMethods, HAS_FULL_INVENTORY_PATCH_KEY) then return true end
+
+        local originalHasFullInventory = targetMethods.hasFullInventory
+        local originalGetFreeInventoryCapacity = targetMethods.getFreeInventoryCapacity
+        rawset(targetMethods, HAS_FULL_INVENTORY_PATCH_KEY, originalHasFullInventory)
+        rawset(targetMethods, FREE_INVENTORY_CAPACITY_PATCH_KEY, originalGetFreeInventoryCapacity)
+
+        targetMethods.getFreeInventoryCapacity = function(character)
+            local configured = configuredFreeCapacity(character)
+            if configured ~= nil then return configured end
+            return originalGetFreeInventoryCapacity(character)
+        end
+        targetMethods.hasFullInventory = function(character)
+            local configured = configuredFreeCapacity(character)
+            if configured ~= nil then return configured <= 0 end
+            return originalHasFullInventory(character)
+        end
+        return true
     end
-    methods.hasFullInventory = function(character)
-        local configured = configuredFreeCapacity(character)
-        if configured ~= nil then return configured <= 0 end
-        return originalCharacterHasFullInventory(character)
+
+    local characterPatched = patchFluidAccessors(methods, "IsoGameCharacter")
+    local playerPatched = false
+    if IsoPlayer and IsoPlayer.class then
+        local playerMetatable = __classmetatables[IsoPlayer.class]
+        local playerMethods = playerMetatable and playerMetatable.__index
+        if playerMethods == methods then
+            playerPatched = characterPatched
+        else
+            playerPatched = patchFluidAccessors(playerMethods, "IsoPlayer")
+        end
     end
-    print("[RemoveLimits] Character capacity and fluid-action accessors installed")
+    if characterPatched or playerPatched then
+        print("[RemoveLimits] Character capacity and fluid-action accessors installed"
+            .. " (IsoGameCharacter=" .. tostring(characterPatched)
+            .. ", IsoPlayer=" .. tostring(playerPatched) .. ")")
+    end
 end
 
 local function installPatch()

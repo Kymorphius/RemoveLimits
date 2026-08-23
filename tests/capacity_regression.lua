@@ -34,13 +34,15 @@ SandboxVars = { RemoveLimits = {
     IgnoreVehicleCargoMass = true,
 } }
 
-local containerMethods, characterMethods = {}, {}
+local containerMethods, characterMethods, playerMethods = {}, {}, {}
 local player, npc
 ItemContainer = { class = {} }
 IsoGameCharacter = { class = {} }
+IsoPlayer = { class = {} }
 __classmetatables = {
     [ItemContainer.class] = { __index = containerMethods },
     [IsoGameCharacter.class] = { __index = characterMethods },
+    [IsoPlayer.class] = { __index = playerMethods },
 }
 
 local overLimitWrites = 0
@@ -92,7 +94,16 @@ characterMethods.getFreeInventoryCapacity = function(character)
     return math.max(0, character:getInventory():getCapacity() - character:getInventory():getCapacityWeight())
 end
 
-player = setmetatable({ rawMaxWeight = 8, rawMaxWeightBase = 8, kind = "player" }, { __index = characterMethods })
+-- Build 42 exposes inherited Java methods through IsoPlayer's own Lua method
+-- table. A player call resolves here instead of through IsoGameCharacter.
+playerMethods.getMaxWeight = characterMethods.getMaxWeight
+playerMethods.setMaxWeight = characterMethods.setMaxWeight
+playerMethods.getMaxWeightBase = characterMethods.getMaxWeightBase
+playerMethods.setMaxWeightBase = characterMethods.setMaxWeightBase
+playerMethods.hasFullInventory = characterMethods.hasFullInventory
+playerMethods.getFreeInventoryCapacity = characterMethods.getFreeInventoryCapacity
+
+player = setmetatable({ rawMaxWeight = 8, rawMaxWeightBase = 8, kind = "player" }, { __index = playerMethods })
 npc = setmetatable({ rawMaxWeight = 12, rawMaxWeightBase = 12, kind = "npc" }, { __index = characterMethods })
 local inventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = player }, { __index = containerMethods })
 local npcInventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = npc }, { __index = containerMethods })
