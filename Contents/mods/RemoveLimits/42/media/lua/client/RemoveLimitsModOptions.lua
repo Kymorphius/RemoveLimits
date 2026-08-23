@@ -128,6 +128,10 @@ function options:apply()
         target:sendToServer()
     else
         target:toLua()
+        local player = getPlayer and getPlayer()
+        if player and RemoveLimits and RemoveLimits.applyCharacterCapacity then
+            RemoveLimits.applyCharacterCapacity(player)
+        end
     end
 end
 

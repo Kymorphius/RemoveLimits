@@ -40,6 +40,7 @@ __classmetatables = {
 local overLimitWrites = 0
 local physicalWrites = 0
 local maxWeightFieldWrites = 0
+local maxWeightBaseFieldWrites = 0
 local vanillaHasRoomCalls = 0
 
 containerMethods.getCapacity = function(container) return container.rawCapacity end
@@ -69,9 +70,14 @@ characterMethods.setMaxWeight = function(character, capacity)
     maxWeightFieldWrites = maxWeightFieldWrites + 1
     character.rawMaxWeight = capacity
 end
+characterMethods.getMaxWeightBase = function(character) return character.rawMaxWeightBase end
+characterMethods.setMaxWeightBase = function(character, capacity)
+    maxWeightBaseFieldWrites = maxWeightBaseFieldWrites + 1
+    character.rawMaxWeightBase = capacity
+end
 
-player = setmetatable({ rawMaxWeight = 8, kind = "player" }, { __index = characterMethods })
-npc = setmetatable({ rawMaxWeight = 12, kind = "npc" }, { __index = characterMethods })
+player = setmetatable({ rawMaxWeight = 8, rawMaxWeightBase = 8, kind = "player" }, { __index = characterMethods })
+npc = setmetatable({ rawMaxWeight = 12, rawMaxWeightBase = 12, kind = "npc" }, { __index = characterMethods })
 local inventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = player }, { __index = containerMethods })
 local npcInventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = npc }, { __index = containerMethods })
 
@@ -96,25 +102,43 @@ for _, callback in ipairs(bootHandlers) do callback() end
 for _, callback in ipairs(createHandlers) do callback(0, player) end
 
 assert(player:getMaxWeight() == 10000, "unlimited player display capacity")
-assert(player.rawMaxWeight == 8, "player maxWeight field must remain untouched")
+assert(player.rawMaxWeight == 10000, "native Heavy Load maxWeight must be configured")
+assert(player.rawMaxWeightBase == 10000, "native recalculation source must be configured")
+assert(maxWeightFieldWrites == 1, "maxWeight must be written once when the player enters")
+assert(maxWeightBaseFieldWrites == 1, "maxWeightBase must be written once when the player enters")
 assert(npc:getMaxWeight() == 12, "NPC maxWeight must remain vanilla")
 assert(inventory.rawCapacity == 100, "unlimited physical player capacity must be 100")
 assert(containerMethods.hasRoomFor(inventory, player, item), "unlimited player transfer must be allowed")
 assert(vanillaHasRoomCalls == 0, "unlimited success path must not call vanilla hasRoomFor")
 
+-- Build 42's native BodyDamage.UpdateStrength derives maxWeight from
+-- maxWeightBase. Simulate repeated native recalculation without invoking any
+-- mod callback: the configured source field remains durable and 500 is not
+-- considered a Heavy Load against the resulting native maxWeight.
+for _ = 1, 1000 do
+    player.rawMaxWeight = player.rawMaxWeightBase
+end
+inventory.currentWeight = 500
+assert(player.rawMaxWeight == 10000, "native recalculation must preserve configured capacity")
+assert(inventory.currentWeight / player.rawMaxWeight < 1, "500 / 10000 must not trigger Heavy Load")
+
 local writesAfterInitialization = physicalWrites
+local maxWeightWritesAfterInitialization = maxWeightFieldWrites
+local maxWeightBaseWritesAfterInitialization = maxWeightBaseFieldWrites
 for iteration = 1, 1000 do
     containerMethods.setCapacity(inventory, player:getMaxWeight() * 1.5)
     containerMethods.setCapacity(inventory, iteration % 2 == 0 and 100 or 50)
 end
 assert(overLimitWrites == 0, "no physical write may exceed Build 42's limit")
 assert(physicalWrites == writesAfterInitialization, "external capacity mods must not cause repeated writes")
-assert(maxWeightFieldWrites == 0, "configured display must not write the maxWeight field")
+assert(maxWeightFieldWrites == maxWeightWritesAfterInitialization, "mod must not repeat maxWeight writes")
+assert(maxWeightBaseFieldWrites == maxWeightBaseWritesAfterInitialization, "mod must not repeat maxWeightBase writes")
 
 SandboxVars.RemoveLimits.CharacterMode = 2
 SandboxVars.RemoveLimits.CharacterCapacityLimit = 30
 for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 30, "custom player display capacity")
+assert(player.rawMaxWeightBase == 30, "custom native recalculation source")
 assert(inventory.rawCapacity == 30, "custom physical capacity below 100")
 inventory.currentWeight = 25
 assert(not containerMethods.hasRoomFor(inventory, player, item), "custom limit must reject excess weight")
@@ -122,6 +146,7 @@ assert(not containerMethods.hasRoomFor(inventory, player, item), "custom limit m
 SandboxVars.RemoveLimits.CharacterMode = 1
 for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 8, "vanilla player display capacity")
+assert(player.rawMaxWeightBase == 8, "vanilla maxWeightBase restoration")
 assert(inventory.rawCapacity == 50, "vanilla physical capacity restoration")
 assert(not containerMethods.hasRoomFor(inventory, player, item), "vanilla mode must delegate hasRoomFor")
 assert(vanillaHasRoomCalls == 1, "vanilla mode should delegate to vanilla hasRoomFor")
@@ -133,4 +158,5 @@ print("capacity regression: PASS")
 print("periodic hooks: 0")
 print("over-limit physical writes: " .. overLimitWrites)
 print("repeated physical writes after initialization: " .. (physicalWrites - writesAfterInitialization - 2))
-print("player-only accessor: PASS")
+print("native Heavy Load ratio at 500 / 10000: PASS")
+print("persistent maxWeightBase without polling: PASS")
