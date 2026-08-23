@@ -7,6 +7,7 @@ local CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetCapacity"
 local EFFECTIVE_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetEffectiveCapacity"
 local MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetMaxWeight"
 local SET_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalSetCapacity"
+local CHARACTER_MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetMaxWeight"
 local BODY_DAMAGE_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateStrength"
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
 local UNLIMITED_CHARACTER_CAPACITY = 10000
@@ -14,6 +15,9 @@ local UNLIMITED_CONTAINER_CAPACITY = 10000
 local MAX_CHARACTER_CONTAINER_CAPACITY = 100
 local characterStates = setmetatable({}, { __mode = "k" })
 local originalGetEffectiveCapacity = nil
+local originalCharacterGetMaxWeight = nil
+local characterMaxWeightAccessorInstalled = false
+local capacityWatchdogTick = 0
 
 local function settings()
     local values = SandboxVars and SandboxVars.RemoveLimits or {}
@@ -130,7 +134,10 @@ local function applyCharacterCapacity(character)
     local state = characterStates[character]
     if not state then
         state = {
-            originalMaxWeight = tonumber(safeCall(function() return character:getMaxWeight() end, 0)) or 0,
+            originalMaxWeight = tonumber(safeCall(function()
+                if originalCharacterGetMaxWeight then return originalCharacterGetMaxWeight(character) end
+                return character:getMaxWeight()
+            end, 0)) or 0,
             originalInventoryCapacity = tonumber(safeCall(function() return inventory:getCapacity() end, 50)) or 50,
             applied = false,
             reportedTarget = nil,
@@ -140,7 +147,9 @@ local function applyCharacterCapacity(character)
 
     if mode == 1 then
         if state.applied then
-            safeCall(function() character:setMaxWeight(state.originalMaxWeight) end, nil)
+            if not characterMaxWeightAccessorInstalled then
+                safeCall(function() character:setMaxWeight(state.originalMaxWeight) end, nil)
+            end
             safeCall(function() inventory:setCapacity(state.originalInventoryCapacity) end, nil)
             state.applied = false
             state.reportedTarget = nil
@@ -152,7 +161,10 @@ local function applyCharacterCapacity(character)
     end
 
     if not state.applied then
-        state.originalMaxWeight = tonumber(safeCall(function() return character:getMaxWeight() end, state.originalMaxWeight)) or state.originalMaxWeight
+        state.originalMaxWeight = tonumber(safeCall(function()
+            if originalCharacterGetMaxWeight then return originalCharacterGetMaxWeight(character) end
+            return character:getMaxWeight()
+        end, state.originalMaxWeight)) or state.originalMaxWeight
         state.originalInventoryCapacity = tonumber(safeCall(function() return inventory:getCapacity() end, state.originalInventoryCapacity)) or state.originalInventoryCapacity
     end
 
@@ -161,9 +173,11 @@ local function applyCharacterCapacity(character)
     -- soft limit and hasRoomFor patch can still expose/allow larger values, but
     -- the underlying inventory container must stay within the Java limit.
     local inventoryTarget = math.min(target, MAX_CHARACTER_CONTAINER_CAPACITY)
-    safeCall(function()
-        if character:getMaxWeight() ~= target then character:setMaxWeight(target) end
-    end, nil)
+    if not characterMaxWeightAccessorInstalled then
+        safeCall(function()
+            if character:getMaxWeight() ~= target then character:setMaxWeight(target) end
+        end, nil)
+    end
     safeCall(function()
         if inventory:getCapacity() ~= inventoryTarget then inventory:setCapacity(inventoryTarget) end
     end, nil)
@@ -173,6 +187,39 @@ local function applyCharacterCapacity(character)
             .. " (physical container: " .. tostring(inventoryTarget) .. ")")
         state.reportedTarget = target
     end
+end
+
+local function installCharacterMaxWeightAccessorPatch()
+    if not __classmetatables or not IsoGameCharacter or not IsoGameCharacter.class then
+        print("[RemoveLimits] IsoGameCharacter metadata is unavailable; using field-write fallback")
+        return
+    end
+
+    local classMetatable = __classmetatables[IsoGameCharacter.class]
+    local methods = classMetatable and classMetatable.__index
+    if not methods or type(methods.getMaxWeight) ~= "function" then
+        print("[RemoveLimits] IsoGameCharacter.getMaxWeight is unavailable; using field-write fallback")
+        return
+    end
+    if methods[CHARACTER_MAX_WEIGHT_PATCH_KEY] then
+        originalCharacterGetMaxWeight = methods[CHARACTER_MAX_WEIGHT_PATCH_KEY]
+        characterMaxWeightAccessorInstalled = true
+        return
+    end
+
+    originalCharacterGetMaxWeight = methods.getMaxWeight
+    methods[CHARACTER_MAX_WEIGHT_PATCH_KEY] = originalCharacterGetMaxWeight
+    methods.getMaxWeight = function(character)
+        local vanillaCapacity = originalCharacterGetMaxWeight(character)
+        local options = settings()
+        if options.characterMode == 1 then return vanillaCapacity end
+        if options.characterMode == 2 then
+            return math.max(1, math.floor(options.characterLimit))
+        end
+        return UNLIMITED_CHARACTER_CAPACITY
+    end
+    characterMaxWeightAccessorInstalled = true
+    print("[RemoveLimits] Character max-weight display accessor installed")
 end
 
 local function installPatch()
@@ -209,7 +256,17 @@ local function installPatch()
         methods.setCapacity = function(container, capacity)
             local numericCapacity = tonumber(capacity)
             if numericCapacity and classify(container) == "character" then
-                numericCapacity = math.min(numericCapacity, MAX_CHARACTER_CONTAINER_CAPACITY)
+                local options = settings()
+                if options.characterMode == 2 then
+                    numericCapacity = math.min(
+                        math.max(1, math.floor(options.characterLimit)),
+                        MAX_CHARACTER_CONTAINER_CAPACITY
+                    )
+                elseif options.characterMode == 3 then
+                    numericCapacity = MAX_CHARACTER_CONTAINER_CAPACITY
+                else
+                    numericCapacity = math.min(numericCapacity, MAX_CHARACTER_CONTAINER_CAPACITY)
+                end
                 local currentCapacity = tonumber(safeCall(function()
                     return originalGetCapacity(container)
                 end, nil))
@@ -359,6 +416,8 @@ local function installVehicleMassPatch()
 end
 
 local function applyActivePlayerCapacities()
+    capacityWatchdogTick = (capacityWatchdogTick + 1) % 60
+    if capacityWatchdogTick ~= 0 then return end
     local count = tonumber(safeCall(function() return getNumActivePlayers() end, 1)) or 1
     for playerIndex = 0, math.max(0, count - 1) do
         local player = safeCall(function() return getSpecificPlayer(playerIndex) end, nil)
@@ -367,8 +426,12 @@ local function applyActivePlayerCapacities()
 end
 
 Events.OnGameBoot.Add(installPatch)
+Events.OnGameBoot.Add(installCharacterMaxWeightAccessorPatch)
 Events.OnGameBoot.Add(installBodyDamagePatch)
 Events.OnGameBoot.Add(installVehicleMassPatch)
--- OnTick runs after the engine's player/body-damage update in Build 42.20.3,
--- guaranteeing the inventory title reads the final configured value.
+if Events.OnCreatePlayer then
+    Events.OnCreatePlayer.Add(function(_, player) applyCharacterCapacity(player) end)
+end
+-- Low-frequency watchdog for direct Java-side capacity resets that bypass the
+-- Lua setter. Normal updates are handled by OnCreatePlayer/UpdateStrength.
 Events.OnTick.Add(applyActivePlayerCapacities)
