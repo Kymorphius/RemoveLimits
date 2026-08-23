@@ -17,7 +17,6 @@ local characterStates = setmetatable({}, { __mode = "k" })
 local originalGetEffectiveCapacity = nil
 local originalCharacterGetMaxWeight = nil
 local characterMaxWeightAccessorInstalled = false
-local capacityWatchdogTick = 0
 
 local function settings()
     local values = SandboxVars and SandboxVars.RemoveLimits or {}
@@ -345,14 +344,14 @@ end
 
 local function installBodyDamagePatch()
     if not __classmetatables or not BodyDamage or not BodyDamage.class then
-        print("[RemoveLimits] BodyDamage metadata is unavailable; using OnTick fallback")
+        print("[RemoveLimits] BodyDamage metadata is unavailable; relying on creation/setter patches")
         return
     end
 
     local classMetatable = __classmetatables[BodyDamage.class]
     local methods = classMetatable and classMetatable.__index
     if not methods or type(methods.UpdateStrength) ~= "function" then
-        print("[RemoveLimits] BodyDamage.UpdateStrength is unavailable; using OnTick fallback")
+        print("[RemoveLimits] BodyDamage.UpdateStrength is unavailable; relying on creation/setter patches")
         return
     end
     if methods[BODY_DAMAGE_PATCH_KEY] then return end
@@ -415,16 +414,6 @@ local function installVehicleMassPatch()
     print("[RemoveLimits] Vehicle cargo mass exclusion patch installed")
 end
 
-local function applyActivePlayerCapacities()
-    capacityWatchdogTick = (capacityWatchdogTick + 1) % 60
-    if capacityWatchdogTick ~= 0 then return end
-    local count = tonumber(safeCall(function() return getNumActivePlayers() end, 1)) or 1
-    for playerIndex = 0, math.max(0, count - 1) do
-        local player = safeCall(function() return getSpecificPlayer(playerIndex) end, nil)
-        if player then applyCharacterCapacity(player) end
-    end
-end
-
 Events.OnGameBoot.Add(installPatch)
 Events.OnGameBoot.Add(installCharacterMaxWeightAccessorPatch)
 Events.OnGameBoot.Add(installBodyDamagePatch)
@@ -432,6 +421,3 @@ Events.OnGameBoot.Add(installVehicleMassPatch)
 if Events.OnCreatePlayer then
     Events.OnCreatePlayer.Add(function(_, player) applyCharacterCapacity(player) end)
 end
--- Low-frequency watchdog for direct Java-side capacity resets that bypass the
--- Lua setter. Normal updates are handled by OnCreatePlayer/UpdateStrength.
-Events.OnTick.Add(applyActivePlayerCapacities)
