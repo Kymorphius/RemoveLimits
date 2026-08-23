@@ -244,9 +244,42 @@ for _, callback in ipairs(createHandlers) do callback(0, player) end
 local fullTooltip = { description = "Inventory is full" }
 local fillOption = { name = "Fill", notAvailable = true, toolTip = fullTooltip }
 local unrelatedOption = { name = "Unrelated", notAvailable = true, toolTip = { description = "Another reason" } }
+local testFluidContainer = {
+    isFull = function() return false end,
+    canAddFluid = function() return true end,
+}
+local fillableItem = {
+    getFluidContainer = function() return testFluidContainer end,
+    getName = function() return "Test bottle" end,
+}
+local fluidCandidates = {
+    isEmpty = function() return false end,
+    size = function() return 1 end,
+    get = function(_, index) if index == 0 then return fillableItem end end,
+}
+inventory.getAllEvalRecurse = function(_, predicate)
+    assert(predicate(fillableItem), "test fluid item must satisfy the native water-container predicate")
+    return fluidCandidates
+end
+local waterSource = {
+    canTransferFluidTo = function(_, fluidContainer) return fluidContainer == testFluidContainer end,
+}
+local createdSubmenu
 local nativeContext = { options = { fillOption, unrelatedOption } }
+function nativeContext:getNew()
+    createdSubmenu = { options = {} }
+    function createdSubmenu:addGetUpOption(name, target, onSelect, ...)
+        local option = { name = name, target = target, onSelect = onSelect, params = { ... } }
+        self.options[#self.options + 1] = option
+        return option
+    end
+    return createdSubmenu
+end
+function nativeContext:addSubMenu(option, submenu) option.subOption = submenu end
 ISWorldObjectContextMenu = {
     createMenu = function() return nativeContext end,
+    fetchVars = { storeWater = { waterSource } },
+    onTakeWater = function() end,
 }
 ISTakeWaterAction = {
     isValid = function() return false end,
@@ -280,12 +313,17 @@ getText = function(key)
     return key
 end
 ZomboidGlobals = { EquippedOrWornEncumbranceMultiplier = 0.3 }
+Fluid = { Water = {} }
 assert(loadfile(fluidActions))()
 require = originalRequire
 
 ISWorldObjectContextMenu.createMenu(0, {}, 0, 0, false)
 assert(fillOption.notAvailable == false, "native water Fill option must be enabled at configured capacity")
 assert(fillOption.toolTip == nil, "stale native Full Inventory tooltip must be removed")
+assert(fillOption.subOption == createdSubmenu, "native water Fill option must receive a real submenu")
+assert(#createdSubmenu.options == 1, "native water Fill submenu must contain the compatible bottle")
+assert(createdSubmenu.options[1].onSelect == ISWorldObjectContextMenu.onTakeWater,
+    "native water Fill submenu must call vanilla onTakeWater")
 assert(unrelatedOption.notAvailable == true, "option disabled for another reason must remain untouched")
 fillOption.notAvailable = true
 fillOption.toolTip = fullTooltip
