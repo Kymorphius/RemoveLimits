@@ -1,0 +1,6 @@
+name=Infinite Capacity / 无限容量
+id=RemoveCapacityAndPickUpLimits
+description=可分别配置角色容量上限及背包、世界、车辆容器容量。 / Configurable character, bag, world-container, and vehicle capacity limits.
+poster=poster.png
+icon=poster.png
+modversion=1.3.1

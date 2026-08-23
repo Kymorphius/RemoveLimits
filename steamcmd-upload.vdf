@@ -1,0 +1,63 @@
+"workshopitem"
+{
+    "appid"            "108600"
+    "publishedfileid"  "3546219719"
+    "contentfolder"    "/Users/matrix/Zomboid/Workshop/RemoveLimits/Contents"
+    "previewfile"      "/Users/matrix/Zomboid/Workshop/RemoveLimits/preview.png"
+    "visibility"       "0"
+    "title"            "Infinite Capacity / 无限容量"
+    "description"      "[h1]Infinite Capacity[/h1]
+Removes the character pickup hard cap and container capacity limits with detailed sandbox configuration. Drag-and-drop, Loot All, and “Put in Container...” remain available.
+
+[h2]Configurable features for Build 42.20[/h2]
+• Adjustable from the built-in Settings → Mods page and synchronized with sandbox settings
+• Character inventory: Vanilla / Custom limit (1–10000) / Unlimited
+• Character capacity is reflected in the inventory display; Unlimited shows 10000
+• Containers: Vanilla / Original-capacity multiplier (1–100×) / Unlimited
+• Separate toggles for bags, world containers, and vehicle containers
+• Optional vehicle cargo mass exclusion, enabled by default
+• Multiplayer settings are controlled by the server's sandbox configuration; regular players have read-only controls
+• Defaults remain unlimited to preserve the behavior of previous releases
+
+[h2]Compatibility and safety[/h2]
+• Updated against Project Zomboid Build 42.20.3 stable
+• Build 41 retains the original all-unlimited compatibility mode
+• Multiplayer requires the mod on both server and clients
+• Preserves item-type rules, per-item bag size, in-vehicle heavy-item restrictions, trading, safehouse, and transaction checks
+• Floor-item safety and ItemNumbersLimitPerContainer remain vanilla
+
+[h2]Credits[/h2]
+The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Container Capacity Limit (Workshop 3396168708).
+
+[hr][/hr]
+
+[h1]无限容量[/h1]
+解除角色拾取硬上限和容器容量限制，并可在沙盒设置中精细控制。拖放、全部拾取和右键“放入容器……”均可正常使用。
+
+[h2]Build 42.20 可配置功能[/h2]
+• 可在系统自带的“设置 → 模组”页面直接调整，并与沙盒设置同步
+• 角色物品栏：原版 / 自定义容量上限（1–10000）/ 无限
+• 角色容量会真实反映在物品栏右上角；无限模式显示 10000
+• 容器容量：原版 / 原容量倍率（1–100 倍）/ 无限
+• 可分别控制背包与手提包、世界容器、车辆容器
+• 可让车辆容器中的货物不计入整车物理质量（默认开启）
+• 多人游戏由服务器沙盒设置统一控制；普通玩家只读
+• 默认仍为角色和容器无限，更新后保持旧版行为
+
+[h2]兼容性与安全[/h2]
+• 已按 Project Zomboid Build 42.20.3 正式版更新
+• Build 41 保留原有的全部无限兼容模式
+• 多人游戏需要服务器和客户端同时安装并启用
+• 保留物品类型、背包单件尺寸、车内重物、交易、保险屋及多人交易一致性检查
+• 地面物品安全限制及 ItemNumbersLimitPerContainer 服务器上限保持原版
+
+[h2]鸣谢[/h2]
+功能构想结合了 Remove Loot Restriction（工坊 2885648642）和 Bypass Container Capacity Limit（工坊 3396168708）。
+
+[h2]IDs / 编号[/h2]
+Workshop ID: 3546219719
+Mod ID: RemoveCapacityAndPickUpLimits"
+    "changenote"       "v1.3.1: Fixed a Build 42 performance regression caused by repeated attempts to set character ItemContainer capacity above the engine limit. High/unlimited carry capacity remains available without warning-log spam, with safer ExtraWeightCapacity and CardSystemMod interoperability.
+
+v1.3.1：修复 Build 42 中反复写入超出引擎上限的人物 ItemContainer 容量所导致的帧率下降；高容量/无限负重继续可用，不再刷警告日志，并改善与 ExtraWeightCapacity、CardSystemMod 的兼容性。"
+}

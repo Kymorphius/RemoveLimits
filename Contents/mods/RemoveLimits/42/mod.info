@@ -1,0 +1,7 @@
+name=Infinite Capacity / 无限容量
+id=RemoveCapacityAndPickUpLimits
+description=适配 Build 42.20；沙盒设置与系统“模组设置”双向同步。 / Build 42.20 compatible; sandbox and built-in Mod Options stay synchronized.
+poster=poster.png
+icon=poster.png
+modversion=1.3.1
+versionMin=42.20
