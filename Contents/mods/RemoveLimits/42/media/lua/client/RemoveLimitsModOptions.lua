@@ -6,6 +6,7 @@ require "PZAPI/ModOptions"
 
 local MOD_OPTIONS_ID = "RemoveLimits"
 local SANDBOX_PREFIX = "RemoveLimits."
+local MAIN_OPTIONS_TO_UI_PATCH_KEY = "RemoveLimits_originalToUI"
 
 if PZAPI.ModOptions:getOptions(MOD_OPTIONS_ID) then return end
 
@@ -130,15 +131,22 @@ function options:apply()
     end
 end
 
-local optionsWereVisible = false
-local function syncWhenOptionsOpen()
-    local mainOptions = MainOptions and MainOptions.instance
-    local visible = mainOptions and mainOptions:getIsVisible() or false
-    if visible and not optionsWereVisible and getPlayer() then
+local function installMainOptionsHook()
+    if not MainOptions or type(MainOptions.toUI) ~= "function" then return end
+    if MainOptions[MAIN_OPTIONS_TO_UI_PATCH_KEY] then return end
+
+    local originalToUI = MainOptions.toUI
+    MainOptions[MAIN_OPTIONS_TO_UI_PATCH_KEY] = originalToUI
+    MainOptions.toUI = function(mainOptions, ...)
         pullFromSandbox()
+        return originalToUI(mainOptions, ...)
     end
-    optionsWereVisible = visible
 end
 
-Events.OnGameStart.Add(pullFromSandbox)
-Events.OnTick.Add(syncWhenOptionsOpen)
+local function initializeModOptions()
+    pullFromSandbox()
+    installMainOptionsHook()
+end
+
+installMainOptionsHook()
+Events.OnGameStart.Add(initializeModOptions)

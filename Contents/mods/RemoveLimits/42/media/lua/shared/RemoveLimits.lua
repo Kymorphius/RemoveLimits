@@ -2,12 +2,12 @@
 -- Configurable Build 42.20+ implementation. SandboxVars are read on every
 -- check so server-owned settings remain authoritative in multiplayer.
 
-local CONTAINER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalHasRoomFor"
-local CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetCapacity"
-local EFFECTIVE_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetEffectiveCapacity"
-local MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetMaxWeight"
-local SET_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalSetCapacity"
-local CHARACTER_MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalGetMaxWeight"
+local CONTAINER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalHasRoomFor"
+local CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalGetCapacity"
+local EFFECTIVE_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalGetEffectiveCapacity"
+local MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalGetMaxWeight"
+local SET_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalSetCapacity"
+local CHARACTER_MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalGetMaxWeight"
 local BODY_DAMAGE_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateStrength"
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
 local UNLIMITED_CHARACTER_CAPACITY = 10000
@@ -17,19 +17,35 @@ local characterStates = setmetatable({}, { __mode = "k" })
 local originalGetEffectiveCapacity = nil
 local originalCharacterGetMaxWeight = nil
 local characterMaxWeightAccessorInstalled = false
+local vehicleMassFailureReported = false
 
-local function settings()
-    local values = SandboxVars and SandboxVars.RemoveLimits or {}
-    return {
-        characterMode = tonumber(values.CharacterMode) or 3,
-        characterLimit = tonumber(values.CharacterCapacityLimit) or 100,
-        containerMode = tonumber(values.ContainerMode) or 3,
-        containerMultiplier = tonumber(values.ContainerMultiplier) or 2,
-        affectBags = values.AffectBags ~= false,
-        affectWorldContainers = values.AffectWorldContainers ~= false,
-        affectVehicles = values.AffectVehicles ~= false,
-        ignoreVehicleCargoMass = values.IgnoreVehicleCargoMass ~= false,
-    }
+local function sandboxValues()
+    return SandboxVars and SandboxVars.RemoveLimits
+end
+
+local function numberSetting(name, fallback)
+    local values = sandboxValues()
+    return tonumber(values and values[name]) or fallback
+end
+
+local function booleanSetting(name)
+    local values = sandboxValues()
+    return not values or values[name] ~= false
+end
+
+local function characterMode()
+    return numberSetting("CharacterMode", 3)
+end
+
+local function characterLimit()
+    return numberSetting("CharacterCapacityLimit", 100)
+end
+
+local function configuredCharacterTarget()
+    if characterMode() == 2 then
+        return math.max(1, math.floor(characterLimit()))
+    end
+    return UNLIMITED_CHARACTER_CAPACITY
 end
 
 local function safeCall(callback, fallback)
@@ -38,48 +54,46 @@ local function safeCall(callback, fallback)
     return fallback
 end
 
-local function vehiclePart(container)
-    return safeCall(function() return container:getVehiclePart() end, nil)
-end
-
-local function containingItem(container)
-    return safeCall(function() return container:getContainingItem() end, nil)
-end
-
 local function classify(container)
-    if safeCall(function() return container:getType() end, nil) == "floor" then
+    if container:getType() == "floor" then
         return "floor"
     end
-    if vehiclePart(container) then
+
+    local parent = container:getParent()
+    if parent and instanceof and instanceof(parent, "IsoPlayer") then
+        return "character"
+    end
+    if parent and instanceof and instanceof(parent, "IsoGameCharacter") then
+        return "other-character"
+    end
+
+    if container:getVehiclePart() then
         return "vehicle"
     end
 
-    local ownerItem = containingItem(container)
+    local ownerItem = container:getContainingItem()
     if ownerItem then
-        local outer = safeCall(function() return ownerItem:getContainer() end, nil)
-        if outer and vehiclePart(outer) then
+        local outer = ownerItem:getContainer()
+        if outer and outer:getVehiclePart() then
             return "vehicle"
         end
         return "bag"
-    end
-
-    local parent = safeCall(function() return container:getParent() end, nil)
-    if parent and instanceof and instanceof(parent, "IsoGameCharacter") then
-        return "character"
     end
     return "world"
 end
 
 local function configuredContainerCapacity(container, character, vanillaCapacity)
-    local category = classify(container)
-    local options = settings()
-    local affected = (category == "bag" and options.affectBags)
-        or (category == "vehicle" and options.affectVehicles)
-        or (category == "world" and options.affectWorldContainers)
+    local mode = numberSetting("ContainerMode", 3)
+    if mode == 1 then return vanillaCapacity end
 
-    if not affected or options.containerMode == 1 then return vanillaCapacity end
-    if options.containerMode == 3 then return UNLIMITED_CONTAINER_CAPACITY end
-    return math.max(1, vanillaCapacity * math.max(1, options.containerMultiplier))
+    local category = classify(container)
+    local affected = (category == "bag" and booleanSetting("AffectBags"))
+        or (category == "vehicle" and booleanSetting("AffectVehicles"))
+        or (category == "world" and booleanSetting("AffectWorldContainers"))
+
+    if not affected then return vanillaCapacity end
+    if mode == 3 then return UNLIMITED_CONTAINER_CAPACITY end
+    return math.max(1, vanillaCapacity * math.max(1, numberSetting("ContainerMultiplier", 2)))
 end
 
 local function unpackHasRoomArguments(...)
@@ -108,7 +122,7 @@ end
 
 local function exceedsBagItemSize(container, value, weight)
     if type(value) == "number" or not value then return false end
-    local ownerItem = containingItem(container)
+    local ownerItem = container:getContainingItem()
     if not ownerItem then return false end
     local maximum = tonumber(safeCall(function() return ownerItem:getMaxItemSize() end, 0)) or 0
     return maximum > 0 and weight > maximum
@@ -124,12 +138,11 @@ local function isHeavyItemBlockedInVehicle(character, container, value)
 end
 
 local function applyCharacterCapacity(character)
-    if not character then return end
+    if not character or not instanceof or not instanceof(character, "IsoPlayer") then return end
     local inventory = safeCall(function() return character:getInventory() end, nil)
     if not inventory then return end
 
-    local options = settings()
-    local mode = options.characterMode
+    local mode = characterMode()
     local state = characterStates[character]
     if not state then
         state = {
@@ -167,7 +180,7 @@ local function applyCharacterCapacity(character)
         state.originalInventoryCapacity = tonumber(safeCall(function() return inventory:getCapacity() end, state.originalInventoryCapacity)) or state.originalInventoryCapacity
     end
 
-    local target = mode == 2 and math.max(1, math.floor(options.characterLimit)) or UNLIMITED_CHARACTER_CAPACITY
+    local target = configuredCharacterTarget()
     -- Build 42 hard-rejects ItemContainer capacities above 100. The character
     -- soft limit and hasRoomFor patch can still expose/allow larger values, but
     -- the underlying inventory container must stay within the Java limit.
@@ -210,12 +223,9 @@ local function installCharacterMaxWeightAccessorPatch()
     methods[CHARACTER_MAX_WEIGHT_PATCH_KEY] = originalCharacterGetMaxWeight
     methods.getMaxWeight = function(character)
         local vanillaCapacity = originalCharacterGetMaxWeight(character)
-        local options = settings()
-        if options.characterMode == 1 then return vanillaCapacity end
-        if options.characterMode == 2 then
-            return math.max(1, math.floor(options.characterLimit))
-        end
-        return UNLIMITED_CHARACTER_CAPACITY
+        if not instanceof or not instanceof(character, "IsoPlayer") then return vanillaCapacity end
+        if characterMode() == 1 then return vanillaCapacity end
+        return configuredCharacterTarget()
     end
     characterMaxWeightAccessorInstalled = true
     print("[RemoveLimits] Character max-weight display accessor installed")
@@ -255,20 +265,13 @@ local function installPatch()
         methods.setCapacity = function(container, capacity)
             local numericCapacity = tonumber(capacity)
             if numericCapacity and classify(container) == "character" then
-                local options = settings()
-                if options.characterMode == 2 then
-                    numericCapacity = math.min(
-                        math.max(1, math.floor(options.characterLimit)),
-                        MAX_CHARACTER_CONTAINER_CAPACITY
-                    )
-                elseif options.characterMode == 3 then
-                    numericCapacity = MAX_CHARACTER_CONTAINER_CAPACITY
+                local mode = characterMode()
+                if mode == 2 or mode == 3 then
+                    numericCapacity = math.min(configuredCharacterTarget(), MAX_CHARACTER_CONTAINER_CAPACITY)
                 else
                     numericCapacity = math.min(numericCapacity, MAX_CHARACTER_CONTAINER_CAPACITY)
                 end
-                local currentCapacity = tonumber(safeCall(function()
-                    return originalGetCapacity(container)
-                end, nil))
+                local currentCapacity = tonumber(originalGetCapacity(container))
                 if currentCapacity == numericCapacity then return end
                 return originalSetCapacity(container, numericCapacity)
             end
@@ -295,48 +298,42 @@ local function installPatch()
     methods.hasRoomFor = function(container, ...)
         if not container then return false end
 
-        local vanillaResult = originalHasRoomFor(container, ...)
         local category = classify(container)
-        local options = settings()
         local mode
 
         if category == "character" then
-            mode = options.characterMode
-        elseif category == "bag" and options.affectBags then
-            mode = options.containerMode
-        elseif category == "vehicle" and options.affectVehicles then
-            mode = options.containerMode
-        elseif category == "world" and options.affectWorldContainers then
-            mode = options.containerMode
+            mode = characterMode()
+        elseif category == "bag" and booleanSetting("AffectBags") then
+            mode = numberSetting("ContainerMode", 3)
+        elseif category == "vehicle" and booleanSetting("AffectVehicles") then
+            mode = numberSetting("ContainerMode", 3)
+        elseif category == "world" and booleanSetting("AffectWorldContainers") then
+            mode = numberSetting("ContainerMode", 3)
         else
-            return vanillaResult
+            return originalHasRoomFor(container, ...)
         end
 
-        if mode == 1 then return vanillaResult end
+        if mode == 1 then return originalHasRoomFor(container, ...) end
 
         local character, value = unpackHasRoomArguments(...)
         local weight = addedWeight(value)
-        if not weight then return vanillaResult end
+        if not weight then return originalHasRoomFor(container, ...) end
         if not itemAllowed(container, value) then return false end
         if exceedsBagItemSize(container, value, weight) then return false end
         if isHeavyItemBlockedInVehicle(character, container, value) then return false end
 
         if mode == 3 then return true end
 
-        local currentWeight = tonumber(safeCall(function()
-            return container:getCapacityWeight()
-        end, nil))
-        if not currentWeight then return vanillaResult end
+        local currentWeight = tonumber(container:getCapacityWeight())
+        if not currentWeight then return originalHasRoomFor(container, ...) end
 
         if category == "character" then
-            return currentWeight + weight <= math.max(1, options.characterLimit)
+            return currentWeight + weight <= math.max(1, characterLimit())
         end
 
-        local baseCapacity = tonumber(safeCall(function()
-            return originalGetEffectiveCapacity(container, character)
-        end, nil))
-        if not baseCapacity then return vanillaResult end
-        return currentWeight + weight <= baseCapacity * math.max(1, options.containerMultiplier)
+        local baseCapacity = tonumber(originalGetEffectiveCapacity(container, character))
+        if not baseCapacity then return originalHasRoomFor(container, ...) end
+        return currentWeight + weight <= baseCapacity * math.max(1, numberSetting("ContainerMultiplier", 2))
     end
 
     print("[RemoveLimits] Configurable capacity and display patch installed (Build 42.20+)")
@@ -384,11 +381,11 @@ local function installVehicleMassPatch()
     local originalUpdateTotalMass = methods.updateTotalMass
     methods[VEHICLE_MASS_PATCH_KEY] = originalUpdateTotalMass
     methods.updateTotalMass = function(vehicle, ...)
-        if not settings().ignoreVehicleCargoMass then
+        if not booleanSetting("IgnoreVehicleCargoMass") then
             return originalUpdateTotalMass(vehicle, ...)
         end
 
-        local ok = pcall(function()
+        local ok, err = pcall(function()
             local installedPartsWeight = 0
             local parts = vehicle:getParts()
             for partIndex = 0, parts:size() - 1 do
@@ -408,6 +405,10 @@ local function installVehicleMassPatch()
             -- route and is picked up on the next vehicle physics update.
         end)
         if not ok then
+            if not vehicleMassFailureReported then
+                print("[RemoveLimits] Vehicle cargo mass patch failed; using vanilla mass: " .. tostring(err))
+                vehicleMassFailureReported = true
+            end
             return originalUpdateTotalMass(vehicle, ...)
         end
     end
