@@ -1,0 +1,27 @@
+module RemoveLimits
+{
+    item CapacityTestWeight
+    {
+        DisplayName = Infinite Capacity Test Weight (150),
+        DisplayCategory = Material,
+        ItemType = base:normal,
+        Weight = 150,
+        Icon = Dumbbell,
+    }
+
+    craftRecipe MakeCapacityTestWeight
+    {
+        category = Miscellaneous,
+        NeedToBeLearn = false,
+        Tags = InHandCraft;CanBeDoneInDark,
+        time = 5,
+        inputs
+        {
+            item 1 [Base.RippedSheets],
+        }
+        outputs
+        {
+            item 1 RemoveLimits.CapacityTestWeight,
+        }
+    }
+}

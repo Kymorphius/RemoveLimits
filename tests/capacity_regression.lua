@@ -1,5 +1,6 @@
 local source = arg[1] or "Contents/mods/RemoveLimits/42/media/lua/shared/RemoveLimits.lua"
 local clientOptions = arg[2] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsModOptions.lua"
+local testItemScript = arg[3] or "Contents/mods/RemoveLimits/42/media/scripts/RemoveLimits_test_item.txt"
 
 local function readAll(path)
     local file = assert(io.open(path, "rb"))
@@ -10,6 +11,11 @@ end
 
 assert(not readAll(source):find("Events%.OnTick"), "shared capacity logic must not register OnTick")
 assert(not readAll(clientOptions):find("Events%.OnTick"), "mod-options UI must not register OnTick")
+local testItemDefinition = readAll(testItemScript)
+assert(testItemDefinition:find("item%s+CapacityTestWeight"), "capacity test item must be defined")
+assert(testItemDefinition:find("Weight%s*=%s*150"), "capacity test item must weigh 150")
+assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recipe must consume one ripped sheet")
+assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
 local bootHandlers, createHandlers = {}, {}
 Events = {
@@ -90,6 +96,15 @@ player = setmetatable({ rawMaxWeight = 8, rawMaxWeightBase = 8, kind = "player" 
 npc = setmetatable({ rawMaxWeight = 12, rawMaxWeightBase = 12, kind = "npc" }, { __index = characterMethods })
 local inventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = player }, { __index = containerMethods })
 local npcInventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = npc }, { __index = containerMethods })
+
+function inventory:AddItem(fullType)
+    local created = { fullType = fullType }
+    function created:setActualWeight(weight) self.actualWeight = weight end
+    function created:setWeight(weight) self.weight = weight end
+    function created:setCustomWeight(custom) self.customWeight = custom end
+    return created
+end
+function inventory:setDrawDirty(dirty) self.drawDirty = dirty end
 
 function player:getInventory() return inventory end
 function player:getVehicle() return nil end
@@ -177,6 +192,13 @@ assert(vanillaHasRoomCalls == 1, "vanilla mode should delegate to vanilla hasRoo
 assert(containerMethods.hasRoomFor(npcInventory, npc, item) == false, "NPC inventory must remain vanilla")
 assert(vanillaHasRoomCalls == 2, "NPC inventory must delegate to vanilla")
 
+local testWeight = RemoveLimits.addCapacityTestItem(175, player)
+assert(testWeight.fullType == "RemoveLimits.CapacityTestWeight", "test helper must create the dedicated item")
+assert(testWeight.actualWeight == 175, "test helper must accept a custom actual weight")
+assert(testWeight.weight == 175, "test helper must update the displayed item weight")
+assert(testWeight.customWeight == true, "test helper weight must be persisted as custom")
+assert(inventory.drawDirty == true, "test helper must refresh the inventory display")
+
 print("capacity regression: PASS")
 print("periodic hooks: 0")
 print("over-limit physical writes: " .. overLimitWrites)
@@ -184,3 +206,4 @@ print("repeated physical writes after initialization: " .. (physicalWrites - wri
 print("native Heavy Load ratio at 500 / 10000: PASS")
 print("persistent maxWeightBase without polling: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
+print("custom capacity test item at weight 175: PASS")

@@ -469,3 +469,30 @@ end
 
 RemoveLimits = RemoveLimits or {}
 RemoveLimits.applyCharacterCapacity = applyCharacterCapacity
+
+-- Manual test helper. It creates exactly one item when explicitly called and
+-- never registers an update event or adds the item to normal loot tables.
+-- Example: RemoveLimits.addCapacityTestItem(300)
+function RemoveLimits.addCapacityTestItem(weight, player)
+    local character = player or (getPlayer and getPlayer())
+    if not character then return nil, "player is unavailable" end
+
+    local inventory = safeCall(function() return character:getInventory() end, nil)
+    if not inventory then return nil, "player inventory is unavailable" end
+
+    local requestedWeight = tonumber(weight) or 150
+    requestedWeight = math.max(0.1, requestedWeight)
+    local item = safeCall(function()
+        return inventory:AddItem("RemoveLimits.CapacityTestWeight")
+    end, nil)
+    if not item then return nil, "test item could not be created" end
+
+    safeCall(function()
+        item:setActualWeight(requestedWeight)
+        item:setWeight(requestedWeight)
+        item:setCustomWeight(true)
+        inventory:setDrawDirty(true)
+    end, nil)
+    print("[RemoveLimits] Added capacity test item with weight " .. tostring(requestedWeight))
+    return item
+end
