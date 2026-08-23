@@ -17,22 +17,42 @@ local function configuredFreeCapacity(character)
     return RemoveLimits.getFreeCharacterCapacity(character)
 end
 
-local function repairNativeFillOption(context, player)
+local repairReported = false
+
+local function repairNativeFullInventoryOptions(context, player, visited)
     local freeCapacity = configuredFreeCapacity(player)
     if freeCapacity == nil or freeCapacity <= 0 or not context or not context.options then return end
+    visited = visited or {}
+    if visited[context] then return end
+    visited[context] = true
 
-    local fillText = getText("ContextMenu_Fill")
     local fullInventoryText = getText("ContextMenu_FullInventory")
+    local repaired = 0
     for _, option in ipairs(context.options) do
         local tooltip = option and option.toolTip
         if option
-            and option.name == fillText
             and option.notAvailable
             and tooltip
             and tooltip.description == fullInventoryText then
             option.notAvailable = false
             option.toolTip = nil
+            repaired = repaired + 1
         end
+    end
+
+    -- Submenus are held in the root context's instance map. Cover them too so
+    -- fuel, water and other fluid-transfer menus share the same carry limit.
+    if context.instanceMap then
+        for _, childContext in ipairs(context.instanceMap) do
+            if childContext ~= context then
+                repairNativeFullInventoryOptions(childContext, player, visited)
+            end
+        end
+    end
+
+    if repaired > 0 and not repairReported then
+        print("[RemoveLimits] Re-enabled native transfer option blocked by physical inventory capacity")
+        repairReported = true
     end
 end
 
@@ -46,10 +66,15 @@ local function installWorldMenuPatch()
         local context = originalCreateMenu(playerNum, worldobjects, x, y, test)
         if type(context) == "table" then
             local player = getSpecificPlayer(playerNum)
-            repairNativeFillOption(context, player)
+            repairNativeFullInventoryOptions(context, player)
         end
         return context
     end
+end
+
+local function onFillWorldObjectContextMenu(playerNum, context)
+    local player = getSpecificPlayer(playerNum)
+    repairNativeFullInventoryOptions(context, player)
 end
 
 local function installTakeWaterPatch()
@@ -90,4 +115,7 @@ end
 
 installWorldMenuPatch()
 installTakeWaterPatch()
+if Events.OnFillWorldObjectContextMenu then
+    Events.OnFillWorldObjectContextMenu.Add(onFillWorldObjectContextMenu)
+end
 print("[RemoveLimits] Native water-fill menu and action patch installed")

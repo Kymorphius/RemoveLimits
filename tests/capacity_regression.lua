@@ -14,8 +14,8 @@ assert(not readAll(source):find("Events%.OnTick"), "shared capacity logic must n
 assert(not readAll(clientOptions):find("Events%.OnTick"), "mod-options UI must not register OnTick")
 local fluidActionLogic = readAll(fluidActions)
 assert(not fluidActionLogic:find("Events%.OnTick"), "fluid action compatibility must not register OnTick")
-assert(fluidActionLogic:find('option%.name == fillText'), "native menu repair must target only the Fill option")
 assert(fluidActionLogic:find('tooltip%.description == fullInventoryText'), "native menu repair must require the Full Inventory tooltip")
+assert(fluidActionLogic:find('Events%.OnFillWorldObjectContextMenu%.Add'), "native menu repair must run after menu fill")
 assert(fluidActionLogic:find('ISTakeWaterAction%.isValid = function'), "water timed action validity must use configured capacity")
 assert(fluidActionLogic:find('ISTakeWaterAction%.new = function'), "water timed action amount must use configured free capacity")
 local testItemDefinition = readAll(testItemScript)
@@ -25,10 +25,11 @@ assert(testItemDefinition:find("OnCreate%s*=%s*RemoveLimits%.onCreateCapacityTes
 assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recipe must consume one ripped sheet")
 assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
-local bootHandlers, createHandlers = {}, {}
+local bootHandlers, createHandlers, fillMenuHandlers = {}, {}, {}
 Events = {
     OnGameBoot = { Add = function(callback) bootHandlers[#bootHandlers + 1] = callback end },
     OnCreatePlayer = { Add = function(callback) createHandlers[#createHandlers + 1] = callback end },
+    OnFillWorldObjectContextMenu = { Add = function(callback) fillMenuHandlers[#fillMenuHandlers + 1] = callback end },
 }
 
 SandboxVars = { RemoveLimits = {
@@ -242,7 +243,7 @@ inventory.currentWeight = 150
 for _, callback in ipairs(createHandlers) do callback(0, player) end
 local fullTooltip = { description = "Inventory is full" }
 local fillOption = { name = "Fill", notAvailable = true, toolTip = fullTooltip }
-local unrelatedOption = { name = "Unrelated", notAvailable = true, toolTip = fullTooltip }
+local unrelatedOption = { name = "Unrelated", notAvailable = true, toolTip = { description = "Another reason" } }
 local nativeContext = { options = { fillOption, unrelatedOption } }
 ISWorldObjectContextMenu = {
     createMenu = function() return nativeContext end,
@@ -285,7 +286,11 @@ require = originalRequire
 ISWorldObjectContextMenu.createMenu(0, {}, 0, 0, false)
 assert(fillOption.notAvailable == false, "native water Fill option must be enabled at configured capacity")
 assert(fillOption.toolTip == nil, "stale native Full Inventory tooltip must be removed")
-assert(unrelatedOption.notAvailable == true, "unrelated Full Inventory option must remain untouched")
+assert(unrelatedOption.notAvailable == true, "option disabled for another reason must remain untouched")
+fillOption.notAvailable = true
+fillOption.toolTip = fullTooltip
+for _, callback in ipairs(fillMenuHandlers) do callback(0, nativeContext, {}, false) end
+assert(fillOption.notAvailable == false, "post-fill event must repair the native menu even if createMenu is replaced")
 assert(ISTakeWaterAction.isValid({ character = player, item = testWaterItem, waterObject = testWaterObject }),
     "water action must remain valid above physical capacity 100")
 local takeWaterAction = ISTakeWaterAction:new(player, testWaterItem, testWaterObject, false)

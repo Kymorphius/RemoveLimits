@@ -367,15 +367,17 @@ local function installPatch()
     -- the raw vehicle/item definition untouched, and expose the configured
     -- value only through the capacity accessors so Vanilla restores instantly.
     methods.getCapacity = function(container)
-        local vanillaCapacity = originalGetCapacity(container)
+        local vanillaCapacity = safeCall(function() return originalGetCapacity(container) end, 0)
         return configuredContainerCapacity(container, nil, vanillaCapacity)
     end
     methods.getEffectiveCapacity = function(container, character)
-        local vanillaCapacity = originalGetEffectiveCapacity(container, character)
+        local vanillaCapacity = safeCall(function()
+            return originalGetEffectiveCapacity(container, character)
+        end, safeCall(function() return originalGetCapacity(container) end, 0))
         return configuredContainerCapacity(container, character, vanillaCapacity)
     end
     methods.getMaxWeight = function(container)
-        local vanillaCapacity = originalGetMaxWeight(container)
+        local vanillaCapacity = safeCall(function() return originalGetMaxWeight(container) end, 0)
         return configuredContainerCapacity(container, nil, vanillaCapacity)
     end
 
