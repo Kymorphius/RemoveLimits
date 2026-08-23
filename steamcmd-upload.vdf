@@ -73,7 +73,7 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 [h2]IDs / 编号[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "Artwork update: redrawn in a warm vintage line-art style while preserving the box, infinity, and broken-chain symbols. The in-game mod icon has also been synchronized.
+    "changenote"       "Fixed crafted items being dropped on the ground after character inventory weight exceeded Build 42's native 100-unit container limit. Legacy recipes and Build 42 CraftRecipe outputs now use the configured logical carry capacity, without polling or periodic repair. Also includes native fluid, fuel, and water-transfer compatibility improvements.
 
-图片更新：改为暖色复古线稿画风，同时保留箱子、无限符号和断链主题，并同步更新游戏内模组小图标。"
+修复人物物品栏重量超过 Build 42 底层 100 容量后，制作产物掉到地上的问题。旧版配方和 Build 42 CraftRecipe 产物现在都会按照模组设置的逻辑携带上限判断，无轮询、无周期修复；同时包含原生液体、燃油和取水转移兼容性改进。"
 }
