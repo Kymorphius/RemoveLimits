@@ -18,6 +18,7 @@ assert(fluidActionLogic:find('tooltip%.description == fullInventoryText'), "nati
 assert(fluidActionLogic:find('Events%.OnFillWorldObjectContextMenu%.Add'), "native menu repair must run after menu fill")
 assert(fluidActionLogic:find('ISTakeWaterAction%.isValid = function'), "water timed action validity must use configured capacity")
 assert(fluidActionLogic:find('ISTakeWaterAction%.new = function'), "water timed action amount must use configured free capacity")
+assert(fluidActionLogic:find('ISTakeWaterAction%.transferFluid = function'), "water transfer must use the native fluid bridge")
 local testItemDefinition = readAll(testItemScript)
 assert(testItemDefinition:find("item%s+CapacityTestWeight"), "capacity test item must be defined")
 assert(testItemDefinition:find("Weight%s*=%s*0%.1"), "test item template must stay light until placed in inventory")
@@ -48,6 +49,19 @@ local player, npc
 ItemContainer = { class = {} }
 IsoGameCharacter = { class = {} }
 IsoPlayer = { class = {} }
+local nativeFluidTransferCalls = 0
+FluidContainer = {
+    CanTransfer = function(_, target)
+        local owner = target:getOwner()
+        local ownerContainer = owner and owner:getContainer() or nil
+        return not (ownerContainer and instanceof(ownerContainer:getParent(), "IsoPlayer"))
+    end,
+    Transfer = function(_, target)
+        nativeFluidTransferCalls = nativeFluidTransferCalls + 1
+        local owner = target:getOwner()
+        assert(owner:getContainer() == nil, "native fluid transfer target must be detached during the call")
+    end,
+}
 __classmetatables = {
     [ItemContainer.class] = { __index = containerMethods },
     [IsoGameCharacter.class] = { __index = characterMethods },
@@ -135,6 +149,7 @@ function npc:getVehicle() return nil end
 function instanceof(value, className)
     if className == "IsoPlayer" then return value and value.kind == "player" end
     if className == "IsoGameCharacter" then return value and (value.kind == "player" or value.kind == "npc") end
+    if className == "InventoryItem" then return value and value.kind == "item" end
     return false
 end
 
@@ -171,6 +186,17 @@ assert(not player:hasFullInventory(), "fluid actions must not see a full invento
 assert(player:getFreeInventoryCapacity() == 9500, "fluid actions must see native character free capacity")
 assert(vanillaHasFullInventoryCalls == 0, "configured fluid full check must bypass physical capacity 100")
 assert(vanillaFreeCapacityCalls == 0, "configured fluid free-capacity check must bypass physical capacity 100")
+
+local fluidOwner = { kind = "item", container = inventory }
+function fluidOwner:getContainer() return self.container end
+function fluidOwner:setContainer(container) self.container = container end
+local targetFluidContainer = { getOwner = function() return fluidOwner end }
+assert(FluidContainer.CanTransfer({}, targetFluidContainer),
+    "central fluid bridge must bypass only the native player-full check")
+assert(fluidOwner:getContainer() == inventory, "fluid bridge must restore the target item after validation")
+FluidContainer.Transfer({}, targetFluidContainer, 1)
+assert(nativeFluidTransferCalls == 1, "central fluid bridge must invoke the native transfer")
+assert(fluidOwner:getContainer() == inventory, "fluid bridge must restore the target item after transfer")
 
 local writesAfterInitialization = physicalWrites
 local maxWeightWritesAfterInitialization = maxWeightFieldWrites

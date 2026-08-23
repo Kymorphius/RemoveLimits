@@ -9,12 +9,20 @@ require "TimedActions/ISTakeWaterAction"
 local CREATE_MENU_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalCreateMenu"
 local TAKE_WATER_VALID_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalIsValid"
 local TAKE_WATER_NEW_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalNew"
+local TAKE_WATER_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalTransferFluid"
 
 local function configuredFreeCapacity(character)
     if not RemoveLimits or type(RemoveLimits.getFreeCharacterCapacity) ~= "function" then
         return nil
     end
     return RemoveLimits.getFreeCharacterCapacity(character)
+end
+
+local function withFluidTargetCapacityBypass(targetFluidContainer, callback)
+    if RemoveLimits and type(RemoveLimits.withFluidTargetCapacityBypass) == "function" then
+        return RemoveLimits.withFluidTargetCapacityBypass(targetFluidContainer, callback)
+    end
+    return callback()
 end
 
 local repairReported = false
@@ -171,6 +179,19 @@ local function installTakeWaterPatch()
                 action.maxTime = action:getDuration()
             end
             return action
+        end
+    end
+
+
+    if type(ISTakeWaterAction.transferFluid) == "function"
+        and not ISTakeWaterAction[TAKE_WATER_TRANSFER_PATCH_KEY] then
+        local originalTransferFluid = ISTakeWaterAction.transferFluid
+        ISTakeWaterAction[TAKE_WATER_TRANSFER_PATCH_KEY] = originalTransferFluid
+        ISTakeWaterAction.transferFluid = function(action, amount)
+            local target = action.item and action.item:getFluidContainer() or nil
+            return withFluidTargetCapacityBypass(target, function()
+                return originalTransferFluid(action, amount)
+            end)
         end
     end
 end

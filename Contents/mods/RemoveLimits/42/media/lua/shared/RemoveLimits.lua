@@ -10,9 +10,12 @@ local SET_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_orig
 local HAS_FULL_INVENTORY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalHasFullInventory"
 local FREE_INVENTORY_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalGetFreeInventoryCapacity"
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
+local FLUID_CAN_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalCanTransfer"
+local FLUID_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalTransfer"
 local UNLIMITED_CHARACTER_CAPACITY = 10000
 local UNLIMITED_CONTAINER_CAPACITY = 10000
 local MAX_CHARACTER_CONTAINER_CAPACITY = 100
+local unpackValues = unpack or table.unpack
 local characterStates = setmetatable({}, { __mode = "k" })
 local originalGetEffectiveCapacity = nil
 local originalCharacterGetMaxWeight = nil
@@ -76,6 +79,65 @@ local function configuredFreeCharacterCapacity(character)
     local weight = tonumber(safeCall(function() return inventory:getCapacityWeight() end, nil))
     if not limit or not weight then return nil end
     return math.max(0, limit - weight)
+end
+
+-- Build 42's native FluidContainer.CanTransfer() directly calls the Java
+-- IsoPlayer.hasFullInventory(), bypassing Lua accessors. During one synchronous
+-- native transfer check/call, detach only the destination item's back-reference
+-- to the character inventory, then restore it immediately. All native fluid
+-- filters, mixing rules, target capacity and synchronization remain intact.
+local function withFluidTargetCapacityBypass(targetFluidContainer, callback)
+    if type(callback) ~= "function" or not targetFluidContainer then
+        return callback and callback() or nil
+    end
+
+    local owner = safeCall(function() return targetFluidContainer:getOwner() end, nil)
+    if not owner or not instanceof or not instanceof(owner, "InventoryItem") then
+        return callback()
+    end
+    local inventory = safeCall(function() return owner:getContainer() end, nil)
+    local player = inventory and safeCall(function() return inventory:getParent() end, nil) or nil
+    local freeCapacity = player and configuredFreeCharacterCapacity(player) or nil
+    if freeCapacity == nil or freeCapacity <= 0 then return callback() end
+
+    local detached = safeCall(function()
+        owner:setContainer(nil)
+        return owner:getContainer() == nil
+    end, false)
+    if not detached then return callback() end
+
+    local results = { pcall(callback) }
+    owner:setContainer(inventory)
+    if not results[1] then error(results[2], 0) end
+    table.remove(results, 1)
+    return unpackValues(results)
+end
+
+local function installFluidTransferBridge()
+    if not FluidContainer
+        or type(FluidContainer.CanTransfer) ~= "function"
+        or type(FluidContainer.Transfer) ~= "function" then
+        print("[RemoveLimits] Native fluid transfer API is unavailable; bridge not installed")
+        return
+    end
+    if FluidContainer[FLUID_CAN_TRANSFER_PATCH_KEY] then return end
+
+    local originalCanTransfer = FluidContainer.CanTransfer
+    local originalTransfer = FluidContainer.Transfer
+    FluidContainer[FLUID_CAN_TRANSFER_PATCH_KEY] = originalCanTransfer
+    FluidContainer[FLUID_TRANSFER_PATCH_KEY] = originalTransfer
+    FluidContainer.CanTransfer = function(source, target)
+        return withFluidTargetCapacityBypass(target, function()
+            return originalCanTransfer(source, target)
+        end)
+    end
+    FluidContainer.Transfer = function(source, target, ...)
+        local arguments = { ... }
+        return withFluidTargetCapacityBypass(target, function()
+            return originalTransfer(source, target, unpackValues(arguments))
+        end)
+    end
+    print("[RemoveLimits] Native fluid transfer capacity bridge installed")
 end
 
 local function classify(container)
@@ -482,6 +544,7 @@ end
 Events.OnGameBoot.Add(installPatch)
 Events.OnGameBoot.Add(installCharacterCapacityAccessors)
 Events.OnGameBoot.Add(installVehicleMassPatch)
+Events.OnGameBoot.Add(installFluidTransferBridge)
 if Events.OnCreatePlayer then
     Events.OnCreatePlayer.Add(function(_, player) applyCharacterCapacity(player) end)
 end
@@ -489,6 +552,7 @@ end
 RemoveLimits = RemoveLimits or {}
 RemoveLimits.applyCharacterCapacity = applyCharacterCapacity
 RemoveLimits.getFreeCharacterCapacity = configuredFreeCharacterCapacity
+RemoveLimits.withFluidTargetCapacityBypass = withFluidTargetCapacityBypass
 
 -- Manual test helper. It creates exactly one item when explicitly called and
 -- never registers an update event or adds the item to normal loot tables.
