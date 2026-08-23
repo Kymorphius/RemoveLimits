@@ -42,6 +42,8 @@ local physicalWrites = 0
 local maxWeightFieldWrites = 0
 local maxWeightBaseFieldWrites = 0
 local vanillaHasRoomCalls = 0
+local vanillaHasFullInventoryCalls = 0
+local vanillaFreeCapacityCalls = 0
 
 containerMethods.getCapacity = function(container) return container.rawCapacity end
 containerMethods.getEffectiveCapacity = containerMethods.getCapacity
@@ -74,6 +76,14 @@ characterMethods.getMaxWeightBase = function(character) return character.rawMaxW
 characterMethods.setMaxWeightBase = function(character, capacity)
     maxWeightBaseFieldWrites = maxWeightBaseFieldWrites + 1
     character.rawMaxWeightBase = capacity
+end
+characterMethods.hasFullInventory = function(character)
+    vanillaHasFullInventoryCalls = vanillaHasFullInventoryCalls + 1
+    return character:getInventory():getCapacityWeight() >= character:getInventory():getCapacity()
+end
+characterMethods.getFreeInventoryCapacity = function(character)
+    vanillaFreeCapacityCalls = vanillaFreeCapacityCalls + 1
+    return math.max(0, character:getInventory():getCapacity() - character:getInventory():getCapacityWeight())
 end
 
 player = setmetatable({ rawMaxWeight = 8, rawMaxWeightBase = 8, kind = "player" }, { __index = characterMethods })
@@ -121,6 +131,10 @@ end
 inventory.currentWeight = 500
 assert(player.rawMaxWeight == 10000, "native recalculation must preserve configured capacity")
 assert(inventory.currentWeight / player.rawMaxWeight < 1, "500 / 10000 must not trigger Heavy Load")
+assert(not player:hasFullInventory(), "fluid actions must not see a full inventory above physical capacity 100")
+assert(player:getFreeInventoryCapacity() == 9500, "fluid actions must see native character free capacity")
+assert(vanillaHasFullInventoryCalls == 0, "configured fluid full check must bypass physical capacity 100")
+assert(vanillaFreeCapacityCalls == 0, "configured fluid free-capacity check must bypass physical capacity 100")
 
 local writesAfterInitialization = physicalWrites
 local maxWeightWritesAfterInitialization = maxWeightFieldWrites
@@ -140,8 +154,13 @@ for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 30, "custom player display capacity")
 assert(player.rawMaxWeightBase == 30, "custom native recalculation source")
 assert(inventory.rawCapacity == 30, "custom physical capacity below 100")
+player.rawMaxWeight = 52 -- another carry mod may raise the native result
 inventory.currentWeight = 25
 assert(not containerMethods.hasRoomFor(inventory, player, item), "custom limit must reject excess weight")
+assert(not player:hasFullInventory(), "custom fluid action must remain valid below the real limit")
+assert(player:getFreeInventoryCapacity() == 5, "custom fluid action free capacity")
+inventory.currentWeight = 30
+assert(player:hasFullInventory(), "custom fluid action must stop at the real limit")
 
 SandboxVars.RemoveLimits.CharacterMode = 1
 for _, callback in ipairs(createHandlers) do callback(0, player) end
@@ -149,6 +168,10 @@ assert(player:getMaxWeight() == 8, "vanilla player display capacity")
 assert(player.rawMaxWeightBase == 8, "vanilla maxWeightBase restoration")
 assert(inventory.rawCapacity == 50, "vanilla physical capacity restoration")
 assert(not containerMethods.hasRoomFor(inventory, player, item), "vanilla mode must delegate hasRoomFor")
+player:hasFullInventory()
+player:getFreeInventoryCapacity()
+assert(vanillaHasFullInventoryCalls == 1, "vanilla mode must delegate the full-inventory check")
+assert(vanillaFreeCapacityCalls == 1, "vanilla mode must delegate the free-capacity check")
 assert(vanillaHasRoomCalls == 1, "vanilla mode should delegate to vanilla hasRoomFor")
 
 assert(containerMethods.hasRoomFor(npcInventory, npc, item) == false, "NPC inventory must remain vanilla")
@@ -160,3 +183,4 @@ print("over-limit physical writes: " .. overLimitWrites)
 print("repeated physical writes after initialization: " .. (physicalWrites - writesAfterInitialization - 2))
 print("native Heavy Load ratio at 500 / 10000: PASS")
 print("persistent maxWeightBase without polling: PASS")
+print("fluid/fuel actions above physical capacity 100: PASS")

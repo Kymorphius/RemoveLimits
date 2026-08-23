@@ -7,6 +7,8 @@ local CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_original
 local EFFECTIVE_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalGetEffectiveCapacity"
 local MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalGetMaxWeight"
 local SET_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_ItemContainer_originalSetCapacity"
+local HAS_FULL_INVENTORY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalHasFullInventory"
+local FREE_INVENTORY_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalGetFreeInventoryCapacity"
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
 local UNLIMITED_CHARACTER_CAPACITY = 10000
 local UNLIMITED_CONTAINER_CAPACITY = 10000
@@ -17,6 +19,8 @@ local originalCharacterGetMaxWeight = nil
 local originalCharacterSetMaxWeight = nil
 local originalCharacterGetMaxWeightBase = nil
 local originalCharacterSetMaxWeightBase = nil
+local originalCharacterHasFullInventory = nil
+local originalCharacterGetFreeInventoryCapacity = nil
 local vehicleMassFailureReported = false
 
 local function sandboxValues()
@@ -52,6 +56,16 @@ local function safeCall(callback, fallback)
     local ok, result = pcall(callback)
     if ok then return result end
     return fallback
+end
+
+local function effectiveCharacterCapacity(character)
+    local mode = characterMode()
+    if mode == 1 then return nil end
+    local configured = configuredCharacterTarget()
+    local native = originalCharacterGetMaxWeight and tonumber(originalCharacterGetMaxWeight(character)) or nil
+    if not native then return configured end
+    if mode == 2 then return math.min(configured, native) end
+    return native
 end
 
 local function classify(container)
@@ -224,7 +238,7 @@ local function applyCharacterCapacity(character)
     end
 end
 
-local function initializeCharacterCapacityFields()
+local function installCharacterCapacityAccessors()
     if not __classmetatables or not IsoGameCharacter or not IsoGameCharacter.class then
         print("[RemoveLimits] IsoGameCharacter metadata is unavailable; character capacity patch not installed")
         return
@@ -236,7 +250,9 @@ local function initializeCharacterCapacityFields()
         or type(methods.getMaxWeight) ~= "function"
         or type(methods.setMaxWeight) ~= "function"
         or type(methods.getMaxWeightBase) ~= "function"
-        or type(methods.setMaxWeightBase) ~= "function" then
+        or type(methods.setMaxWeightBase) ~= "function"
+        or type(methods.hasFullInventory) ~= "function"
+        or type(methods.getFreeInventoryCapacity) ~= "function" then
         print("[RemoveLimits] IsoGameCharacter capacity fields are unavailable; character capacity patch not installed")
         return
     end
@@ -245,7 +261,41 @@ local function initializeCharacterCapacityFields()
     originalCharacterSetMaxWeight = methods.setMaxWeight
     originalCharacterGetMaxWeightBase = methods.getMaxWeightBase
     originalCharacterSetMaxWeightBase = methods.setMaxWeightBase
-    print("[RemoveLimits] Character max-weight fields ready for one-time initialization")
+
+    if methods[HAS_FULL_INVENTORY_PATCH_KEY] then
+        originalCharacterHasFullInventory = methods[HAS_FULL_INVENTORY_PATCH_KEY]
+        originalCharacterGetFreeInventoryCapacity = methods[FREE_INVENTORY_CAPACITY_PATCH_KEY]
+        return
+    end
+
+    originalCharacterHasFullInventory = methods.hasFullInventory
+    originalCharacterGetFreeInventoryCapacity = methods.getFreeInventoryCapacity
+    methods[HAS_FULL_INVENTORY_PATCH_KEY] = originalCharacterHasFullInventory
+    methods[FREE_INVENTORY_CAPACITY_PATCH_KEY] = originalCharacterGetFreeInventoryCapacity
+
+    local function configuredFreeCapacity(character)
+        if not instanceof or not instanceof(character, "IsoPlayer") or characterMode() == 1 then
+            return nil
+        end
+        local inventory = character:getInventory()
+        if not inventory then return nil end
+        local limit = effectiveCharacterCapacity(character)
+        local weight = tonumber(inventory:getCapacityWeight())
+        if not limit or not weight then return nil end
+        return math.max(0, limit - weight)
+    end
+
+    methods.getFreeInventoryCapacity = function(character)
+        local configured = configuredFreeCapacity(character)
+        if configured ~= nil then return configured end
+        return originalCharacterGetFreeInventoryCapacity(character)
+    end
+    methods.hasFullInventory = function(character)
+        local configured = configuredFreeCapacity(character)
+        if configured ~= nil then return configured <= 0 end
+        return originalCharacterHasFullInventory(character)
+    end
+    print("[RemoveLimits] Character capacity and fluid-action accessors installed")
 end
 
 local function installPatch()
@@ -345,12 +395,9 @@ local function installPatch()
         if not currentWeight then return originalHasRoomFor(container, ...) end
 
         if category == "character" then
-            local limit = math.max(1, characterLimit())
             local parent = container:getParent()
-            if parent and originalCharacterGetMaxWeight then
-                local nativeLimit = tonumber(originalCharacterGetMaxWeight(parent))
-                if nativeLimit then limit = math.min(limit, math.max(0, nativeLimit)) end
-            end
+            local limit = parent and effectiveCharacterCapacity(parent) or characterLimit()
+            limit = math.max(0, tonumber(limit) or characterLimit())
             return currentWeight + weight <= limit
         end
 
@@ -414,7 +461,7 @@ local function installVehicleMassPatch()
 end
 
 Events.OnGameBoot.Add(installPatch)
-Events.OnGameBoot.Add(initializeCharacterCapacityFields)
+Events.OnGameBoot.Add(installCharacterCapacityAccessors)
 Events.OnGameBoot.Add(installVehicleMassPatch)
 if Events.OnCreatePlayer then
     Events.OnCreatePlayer.Add(function(_, player) applyCharacterCapacity(player) end)
