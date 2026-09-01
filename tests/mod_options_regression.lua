@@ -59,8 +59,53 @@ local sandboxObject = {
 }
 
 function getSandboxOptions() return sandboxObject end
-function isClient() return false end
+local clientMode = false
+function isClient() return clientMode end
 function isAdmin() return true end
+
+Capability = { SandboxOptions = {} }
+local sandboxRole = {
+    hasCapability = function(_, capability)
+        return capability == Capability.SandboxOptions
+    end,
+}
+local localPlayer = {
+    id = 1,
+    getRole = function() return sandboxRole end,
+}
+function getPlayer() return localPlayer end
+
+local sandboxChangeNotifications = 0
+RemoveLimits = {
+    notifySandboxChanged = function(notifyPlayer)
+        assert(notifyPlayer == localPlayer, "sandbox refresh must identify the local admin player")
+        sandboxChangeNotifications = sandboxChangeNotifications + 1
+        return true
+    end,
+}
+
+local sentSandboxValues
+SandboxOptions = {
+    new = function()
+        local values = {}
+        return {
+            copyValuesFrom = function()
+                for name, value in pairs(sandbox) do values[name] = value end
+            end,
+            set = function(_, name, value) values[name] = value end,
+            sendToServer = function()
+                sentSandboxValues = values
+            end,
+        }
+    end,
+}
+
+local nativeAdminApplyCalls = 0
+ISServerSandboxOptionsUI = {
+    onButtonApply = function()
+        nativeAdminApplyCalls = nativeAdminApplyCalls + 1
+    end,
+}
 
 local originalToUICalls = 0
 MainOptions = {
@@ -98,6 +143,20 @@ assert(sandbox["RemoveLimits.ContainerMultiplier"] == 3)
 assert(sandbox["RemoveLimits.AffectBags"] == true)
 assert(sandboxObject.toLuaCalls == 1, "single-player apply must call SandboxOptions:toLua once")
 
+clientMode = true
+createdOptions.controls.CharacterMode:setValue(2)
+createdOptions.controls.CharacterCapacityLimit:setValue("750")
+createdOptions:apply()
+assert(sentSandboxValues["RemoveLimits.CharacterMode"] == 2)
+assert(sentSandboxValues["RemoveLimits.CharacterCapacityLimit"] == 750)
+assert(sandboxChangeNotifications == 1,
+    "multiplayer mod-options apply must request one authoritative server refresh")
+
+ISServerSandboxOptionsUI:onButtonApply()
+assert(nativeAdminApplyCalls == 1, "vanilla admin sandbox apply must retain its original behavior")
+assert(sandboxChangeNotifications == 2,
+    "vanilla Admin Sandbox Options must also request one authoritative server refresh")
+
 for _, callback in ipairs(gameStartHandlers) do callback() end
 assert(MainOptions.RemoveLimits_originalToUI, "game start must keep the hook idempotent")
 
@@ -105,3 +164,5 @@ print("mod options regression: PASS")
 print("OnTick registrations: 0")
 print("open-time sandbox sync: PASS")
 print("apply-time sandbox write: PASS")
+print("multiplayer authoritative sandbox refresh notification: PASS")
+print("vanilla admin sandbox refresh notification: PASS")

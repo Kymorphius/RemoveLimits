@@ -73,7 +73,7 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 [h2]IDs / 编号[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "Fixed crafted items being dropped on the ground after character inventory weight exceeded Build 42's native 100-unit container limit. Legacy recipes and Build 42 CraftRecipe outputs now use the configured logical carry capacity, without polling or periodic repair. Also includes native fluid, fuel, and water-transfer compatibility improvements.
+    "changenote"       "Fixed multiplayer carry capacity being display-only. Dedicated and co-op servers now apply the server's authoritative sandbox capacity once when each character joins. Applying settings through either Settings → Mods or Admin → Sandbox Options refreshes online players once, with server-side permission validation. Split-screen players are matched correctly. No polling, timers, or periodic overwrites.
 
-修复人物物品栏重量超过 Build 42 底层 100 容量后，制作产物掉到地上的问题。旧版配方和 Build 42 CraftRecipe 产物现在都会按照模组设置的逻辑携带上限判断，无轮询、无周期修复；同时包含原生液体、燃油和取水转移兼容性改进。"
+修复多人模式下携带容量只有显示变化、服务器实际容量未改变的问题。专用服务器和合作服务器现在会在每名角色进入时，按照服务器沙盒设置一次性应用权威容量。通过“设置 → 模组”或“管理员 → 沙盒设置”应用修改后，会一次性刷新在线玩家，并由服务器验证修改权限；同时正确匹配分屏角色。无轮询、无定时器、无周期覆盖。"
 }

@@ -27,11 +27,18 @@ assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recip
 assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
 local bootHandlers, createHandlers, fillMenuHandlers = {}, {}, {}
+local clientCommandHandlers, serverCommandHandlers = {}, {}
 Events = {
     OnGameBoot = { Add = function(callback) bootHandlers[#bootHandlers + 1] = callback end },
     OnCreatePlayer = { Add = function(callback) createHandlers[#createHandlers + 1] = callback end },
     OnFillWorldObjectContextMenu = { Add = function(callback) fillMenuHandlers[#fillMenuHandlers + 1] = callback end },
+    OnClientCommand = { Add = function(callback) clientCommandHandlers[#clientCommandHandlers + 1] = callback end },
+    OnServerCommand = { Add = function(callback) serverCommandHandlers[#serverCommandHandlers + 1] = callback end },
 }
+
+local runtimeRole = "single"
+function isClient() return runtimeRole == "client" end
+function isServer() return runtimeRole == "server" end
 
 SandboxVars = { RemoveLimits = {
     CharacterMode = 3,
@@ -46,9 +53,12 @@ SandboxVars = { RemoveLimits = {
 
 local containerMethods, characterMethods, playerMethods = {}, {}, {}
 local player, npc
+local onlinePlayers = {}
+local sentClientCommands, sentServerCommands = {}, {}
 ItemContainer = { class = {} }
 IsoGameCharacter = { class = {} }
 IsoPlayer = { class = {} }
+Capability = { SandboxOptions = {} }
 local nativeFluidTransferCalls = 0
 FluidContainer = {
     CanTransfer = function(_, target)
@@ -126,7 +136,15 @@ playerMethods.setMaxWeightBase = characterMethods.setMaxWeightBase
 playerMethods.hasFullInventory = characterMethods.hasFullInventory
 playerMethods.getFreeInventoryCapacity = characterMethods.getFreeInventoryCapacity
 
-player = setmetatable({ rawMaxWeight = 8, rawMaxWeightBase = 8, kind = "player" }, { __index = playerMethods })
+local adminRole = { hasCapability = function(_, capability) return capability == Capability.SandboxOptions end }
+local regularRole = { hasCapability = function() return false end }
+player = setmetatable({
+    rawMaxWeight = 8,
+    rawMaxWeightBase = 8,
+    kind = "player",
+    onlineID = 101,
+    role = adminRole,
+}, { __index = playerMethods })
 npc = setmetatable({ rawMaxWeight = 12, rawMaxWeightBase = 12, kind = "npc" }, { __index = characterMethods })
 local inventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = player }, { __index = containerMethods })
 local npcInventory = setmetatable({ rawCapacity = 50, currentWeight = 0, owner = npc }, { __index = containerMethods })
@@ -143,8 +161,43 @@ function inventory:setDrawDirty(dirty) self.drawDirty = dirty end
 function player:getInventory() return inventory end
 function player:getVehicle() return nil end
 function player:isEquippedClothing() return false end
+function player:getOnlineID() return self.onlineID end
+function player:getRole() return self.role end
 function npc:getInventory() return npcInventory end
 function npc:getVehicle() return nil end
+
+function sendClientCommand(commandPlayer, module, command, arguments)
+    sentClientCommands[#sentClientCommands + 1] = {
+        player = commandPlayer,
+        module = module,
+        command = command,
+        arguments = arguments,
+    }
+end
+
+function sendServerCommand(commandPlayer, module, command, arguments)
+    sentServerCommands[#sentServerCommands + 1] = {
+        player = commandPlayer,
+        module = module,
+        command = command,
+        arguments = arguments,
+    }
+end
+
+function getOnlinePlayers()
+    return {
+        size = function() return #onlinePlayers end,
+        get = function(_, index) return onlinePlayers[index + 1] end,
+    }
+end
+
+function getPlayerByOnlineID(onlineID)
+    if player.onlineID == onlineID then return player end
+    for _, onlinePlayer in ipairs(onlinePlayers) do
+        if onlinePlayer.onlineID == onlineID then return onlinePlayer end
+    end
+    return nil
+end
 
 function instanceof(value, className)
     if className == "IsoPlayer" then return value and value.kind == "player" end
@@ -202,6 +255,145 @@ assert(fluidOwner:getContainer() == inventory, "fluid bridge must restore the ta
 FluidContainer.Transfer({}, targetFluidContainer, 1)
 assert(nativeFluidTransferCalls == 1, "central fluid bridge must invoke the native transfer")
 assert(fluidOwner:getContainer() == inventory, "fluid bridge must restore the target item after transfer")
+
+-- Build 42 fires OnCreatePlayer on clients but not on a dedicated server.
+-- Verify the one-shot ready command causes the server to apply its own
+-- authoritative sandbox capacity and never accepts a capacity from the client.
+runtimeRole = "client"
+for _, callback in ipairs(createHandlers) do callback(0, player) end
+local readyCommand = sentClientCommands[#sentClientCommands]
+assert(readyCommand.module == "RemoveLimits" and readyCommand.command == "CharacterReady",
+    "multiplayer client must announce character readiness once")
+assert(next(readyCommand.arguments) == nil, "ready command must not contain a client-selected capacity")
+
+local serverPlayer = setmetatable({
+    rawMaxWeight = 8,
+    rawMaxWeightBase = 8,
+    kind = "player",
+    onlineID = 201,
+    role = adminRole,
+}, { __index = playerMethods })
+local serverInventory = setmetatable({
+    rawCapacity = 50,
+    currentWeight = 0,
+    owner = serverPlayer,
+}, { __index = containerMethods })
+function serverPlayer:getInventory() return serverInventory end
+function serverPlayer:getVehicle() return nil end
+function serverPlayer:getOnlineID() return self.onlineID end
+function serverPlayer:getRole() return self.role end
+
+local regularPlayer = setmetatable({
+    rawMaxWeight = 12,
+    rawMaxWeightBase = 12,
+    kind = "player",
+    onlineID = 202,
+    role = regularRole,
+}, { __index = playerMethods })
+local regularInventory = setmetatable({
+    rawCapacity = 50,
+    currentWeight = 0,
+    owner = regularPlayer,
+}, { __index = containerMethods })
+function regularPlayer:getInventory() return regularInventory end
+function regularPlayer:getVehicle() return nil end
+function regularPlayer:getOnlineID() return self.onlineID end
+function regularPlayer:getRole() return self.role end
+
+runtimeRole = "server"
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "CharacterReady", serverPlayer, {})
+end
+assert(serverPlayer.rawMaxWeight == 10000 and serverPlayer.rawMaxWeightBase == 10000,
+    "dedicated server must apply authoritative capacity after the ready handshake")
+assert(serverInventory.rawCapacity == 100, "server physical player inventory must remain capped at 100")
+serverInventory.currentWeight = 500
+assert(serverInventory:getEffectiveCapacity(serverPlayer) == 10000,
+    "server transfer logic must expose the authoritative unlimited capacity")
+assert(serverInventory:hasRoomFor(serverPlayer, item),
+    "server must allow an item transfer after physical inventory weight exceeds 100")
+local serverReply = sentServerCommands[#sentServerCommands]
+assert(serverReply.command == "ApplyCharacterCapacity" and serverReply.arguments.onlineID == 201,
+    "server must tell the matching client to refresh its local character")
+
+onlinePlayers = { serverPlayer, regularPlayer }
+SandboxVars.RemoveLimits.CharacterMode = 2
+SandboxVars.RemoveLimits.CharacterCapacityLimit = 500
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "SandboxChanged", serverPlayer, {})
+end
+assert(serverPlayer.rawMaxWeight == 500 and regularPlayer.rawMaxWeight == 500,
+    "authorized sandbox update must refresh every online server player once")
+serverInventory.currentWeight = 495
+assert(not serverInventory:hasRoomFor(serverPlayer, item),
+    "server custom capacity must reject a transfer that exceeds the authoritative limit")
+
+SandboxVars.RemoveLimits.CharacterCapacityLimit = 300
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "SandboxChanged", regularPlayer, {})
+end
+assert(serverPlayer.rawMaxWeight == 500 and regularPlayer.rawMaxWeight == 500,
+    "player without SandboxOptions capability must not trigger a capacity refresh")
+
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "SandboxChanged", serverPlayer, {})
+end
+assert(serverPlayer.rawMaxWeight == 300 and regularPlayer.rawMaxWeight == 300,
+    "authorized live custom limit must be applied on the server")
+
+runtimeRole = "client"
+player.rawMaxWeight = 8
+player.rawMaxWeightBase = 8
+for _, callback in ipairs(serverCommandHandlers) do
+    callback("RemoveLimits", "ApplyCharacterCapacity", { onlineID = 101 })
+end
+assert(player.rawMaxWeight == 300 and player.rawMaxWeightBase == 300,
+    "server refresh command must update the matching local client character")
+
+local primaryLocalPlayer = player
+local secondaryLocalPlayer = setmetatable({
+    rawMaxWeight = 9,
+    rawMaxWeightBase = 9,
+    kind = "player",
+    onlineID = 102,
+    role = regularRole,
+}, { __index = playerMethods })
+local secondaryLocalInventory = setmetatable({
+    rawCapacity = 50,
+    currentWeight = 0,
+    owner = secondaryLocalPlayer,
+}, { __index = containerMethods })
+function secondaryLocalPlayer:getInventory() return secondaryLocalInventory end
+function secondaryLocalPlayer:getVehicle() return nil end
+function secondaryLocalPlayer:getOnlineID() return self.onlineID end
+function getNumActivePlayers() return 2 end
+function getSpecificPlayer(index)
+    if index == 0 then return primaryLocalPlayer end
+    if index == 1 then return secondaryLocalPlayer end
+    return nil
+end
+getPlayerByOnlineID = nil
+primaryLocalPlayer.rawMaxWeight = 250
+for _, callback in ipairs(serverCommandHandlers) do
+    callback("RemoveLimits", "ApplyCharacterCapacity", { onlineID = 102 })
+end
+assert(secondaryLocalPlayer.rawMaxWeight == 300 and primaryLocalPlayer.rawMaxWeight == 250,
+    "server refresh must locate the matching split-screen player without getPlayerByOnlineID")
+
+runtimeRole = "server"
+SandboxVars.RemoveLimits.CharacterMode = 1
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "SandboxChanged", serverPlayer, {})
+end
+assert(serverPlayer.rawMaxWeight == 8 and serverInventory.rawCapacity == 50,
+    "server live update must restore the original character capacity in Vanilla mode")
+assert(regularPlayer.rawMaxWeight == 12 and regularInventory.rawCapacity == 50,
+    "server Vanilla restore must preserve each player's own original values")
+
+runtimeRole = "single"
+onlinePlayers = {}
+SandboxVars.RemoveLimits.CharacterMode = 3
+for _, callback in ipairs(createHandlers) do callback(0, player) end
 
 local writesAfterInitialization = physicalWrites
 local maxWeightWritesAfterInitialization = maxWeightFieldWrites
@@ -379,3 +571,7 @@ print("custom capacity test item at weight 175: PASS")
 print("generic crafted-output placement above physical capacity 100: PASS")
 print("crafted test item direct weight 150: PASS")
 print("native Java water menu bypass compatibility: PASS")
+print("dedicated-server character-ready handshake: PASS")
+print("server-authoritative transfer above physical capacity 100: PASS")
+print("authorized multiplayer sandbox hot refresh: PASS")
+print("unauthorized multiplayer refresh rejected: PASS")

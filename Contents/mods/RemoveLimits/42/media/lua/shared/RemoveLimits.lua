@@ -12,6 +12,10 @@ local FREE_INVENTORY_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGame
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
 local FLUID_CAN_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalCanTransfer"
 local FLUID_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalTransfer"
+local NETWORK_MODULE = "RemoveLimits"
+local COMMAND_CHARACTER_READY = "CharacterReady"
+local COMMAND_SANDBOX_CHANGED = "SandboxChanged"
+local COMMAND_APPLY_CHARACTER = "ApplyCharacterCapacity"
 local UNLIMITED_CHARACTER_CAPACITY = 10000
 local UNLIMITED_CONTAINER_CAPACITY = 10000
 local MAX_CHARACTER_CONTAINER_CAPACITY = 100
@@ -557,18 +561,140 @@ local function installVehicleMassPatch()
     print("[RemoveLimits] Vehicle cargo mass exclusion patch installed")
 end
 
+local function playerOnlineID(player)
+    return tonumber(safeCall(function() return player:getOnlineID() end, -1)) or -1
+end
+
+local function notifyCharacterCapacity(player)
+    if not player or not sendServerCommand then return end
+    safeCall(function()
+        sendServerCommand(player, NETWORK_MODULE, COMMAND_APPLY_CHARACTER, {
+            onlineID = playerOnlineID(player),
+        })
+    end, nil)
+end
+
+local function applyAuthoritativeCharacterCapacity(player)
+    applyCharacterCapacity(player)
+    notifyCharacterCapacity(player)
+end
+
+local function canChangeSandbox(player)
+    if not player then return false end
+
+    local role = safeCall(function() return player:getRole() end, nil)
+    if role and Capability and Capability.SandboxOptions then
+        return safeCall(function()
+            return role:hasCapability(Capability.SandboxOptions)
+        end, false) == true
+    end
+
+    -- Compatibility fallback for older Build 42 role APIs.
+    return safeCall(function() return player:isAdmin() end, false) == true
+end
+
+local function applyCapacityToOnlinePlayers()
+    local players = getOnlinePlayers and safeCall(getOnlinePlayers, nil) or nil
+    if not players then return 0 end
+
+    local applied = 0
+    for index = 0, players:size() - 1 do
+        local player = players:get(index)
+        if player then
+            applyAuthoritativeCharacterCapacity(player)
+            applied = applied + 1
+        end
+    end
+    return applied
+end
+
+local function onClientCommand(module, command, player)
+    if module ~= NETWORK_MODULE or not player then return end
+
+    if command == COMMAND_CHARACTER_READY then
+        -- OnCreatePlayer is a client-only lifecycle event in Build 42. The
+        -- dedicated server applies its own authoritative copy exactly once
+        -- when the newly-created client character announces readiness.
+        applyAuthoritativeCharacterCapacity(player)
+        print("[RemoveLimits] Server capacity applied for connected player")
+        return
+    end
+
+    if command == COMMAND_SANDBOX_CHANGED then
+        if not canChangeSandbox(player) then
+            print("[RemoveLimits] Rejected sandbox refresh from a player without permission")
+            return
+        end
+
+        -- SandboxOptions:sendToServer() has already updated SandboxVars before
+        -- this ordered client command arrives. Reapply once to every connected
+        -- player; container and vehicle options are read dynamically already.
+        local count = applyCapacityToOnlinePlayers()
+        print("[RemoveLimits] Server capacity refreshed after sandbox update for "
+            .. tostring(count) .. " player(s)")
+    end
+end
+
+local function localPlayerForCommand(arguments)
+    local onlineID = arguments and tonumber(arguments.onlineID) or nil
+    if onlineID and getPlayerByOnlineID then
+        local player = safeCall(function() return getPlayerByOnlineID(onlineID) end, nil)
+        if player then return player end
+    end
+
+    -- Some client builds do not expose getPlayerByOnlineID(). Match the
+    -- recipient among local split-screen players before falling back to the
+    -- primary player.
+    if onlineID and getSpecificPlayer then
+        local playerCount = getNumActivePlayers
+            and tonumber(safeCall(getNumActivePlayers, 0)) or 4
+        for playerIndex = 0, math.max(0, playerCount - 1) do
+            local player = safeCall(function() return getSpecificPlayer(playerIndex) end, nil)
+            if player and playerOnlineID(player) == onlineID then return player end
+        end
+    end
+    return getPlayer and getPlayer() or nil
+end
+
+local function onServerCommand(module, command, arguments)
+    if module ~= NETWORK_MODULE or command ~= COMMAND_APPLY_CHARACTER then return end
+    local player = localPlayerForCommand(arguments)
+    if player then applyCharacterCapacity(player) end
+end
+
+local function onCreatePlayer(_, player)
+    applyCharacterCapacity(player)
+    if isClient and isClient() and sendClientCommand then
+        -- No capacity number is sent by the client. The server always reads
+        -- its own sandbox configuration, so clients cannot grant themselves
+        -- a larger limit.
+        sendClientCommand(player, NETWORK_MODULE, COMMAND_CHARACTER_READY, {})
+    end
+end
+
 Events.OnGameBoot.Add(installPatch)
 Events.OnGameBoot.Add(installCharacterCapacityAccessors)
 Events.OnGameBoot.Add(installVehicleMassPatch)
 Events.OnGameBoot.Add(installFluidTransferBridge)
 if Events.OnCreatePlayer then
-    Events.OnCreatePlayer.Add(function(_, player) applyCharacterCapacity(player) end)
+    Events.OnCreatePlayer.Add(onCreatePlayer)
+end
+if Events.OnClientCommand then
+    Events.OnClientCommand.Add(onClientCommand)
+end
+if Events.OnServerCommand then
+    Events.OnServerCommand.Add(onServerCommand)
 end
 
 RemoveLimits = RemoveLimits or {}
 RemoveLimits.applyCharacterCapacity = applyCharacterCapacity
 RemoveLimits.getFreeCharacterCapacity = configuredFreeCharacterCapacity
 RemoveLimits.withFluidTargetCapacityBypass = withFluidTargetCapacityBypass
+RemoveLimits.notifySandboxChanged = function(player)
+    if not (isClient and isClient()) or not sendClientCommand or not player then return false end
+    sendClientCommand(player, NETWORK_MODULE, COMMAND_SANDBOX_CHANGED, {})
+    return true
+end
 
 -- Manual test helper. It creates exactly one item when explicitly called and
 -- never registers an update event or adds the item to normal loot tables.

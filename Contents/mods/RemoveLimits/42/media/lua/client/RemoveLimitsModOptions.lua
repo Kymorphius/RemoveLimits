@@ -7,6 +7,8 @@ require "PZAPI/ModOptions"
 local MOD_OPTIONS_ID = "RemoveLimits"
 local SANDBOX_PREFIX = "RemoveLimits."
 local MAIN_OPTIONS_TO_UI_PATCH_KEY = "RemoveLimits_originalToUI"
+local ADMIN_SANDBOX_APPLY_PATCH_KEY = "RemoveLimits_originalOnButtonApply"
+local unpackValues = unpack or table.unpack
 
 if PZAPI.ModOptions:getOptions(MOD_OPTIONS_ID) then return end
 
@@ -68,7 +70,27 @@ local function sandboxValue(name, fallback)
 end
 
 local function canEditSandbox()
-    return not isClient() or isAdmin()
+    if not isClient() then return true end
+
+    local player = getPlayer and getPlayer()
+    local ok, role = pcall(function() return player and player:getRole() end)
+    if ok and role and Capability and Capability.SandboxOptions then
+        local capabilityOK, allowed = pcall(function()
+            return role:hasCapability(Capability.SandboxOptions)
+        end)
+        if capabilityOK then return allowed == true end
+    end
+
+    -- Compatibility fallback for older Build 42 role APIs.
+    return isAdmin and isAdmin() == true
+end
+
+local function notifyServerSandboxChanged()
+    if not isClient() or not canEditSandbox() then return end
+    local player = getPlayer and getPlayer()
+    if player and RemoveLimits and RemoveLimits.notifySandboxChanged then
+        RemoveLimits.notifySandboxChanged(player)
+    end
 end
 
 local function setEditable(editable)
@@ -133,12 +155,32 @@ function options:apply()
 
     if isClient() then
         target:sendToServer()
+        -- The SandboxOptions packet updates and broadcasts the authoritative
+        -- server values. This following ordered command asks the server to
+        -- apply the new character capacity once to players already online.
+        notifyServerSandboxChanged()
     else
         target:toLua()
         local player = getPlayer and getPlayer()
         if player and RemoveLimits and RemoveLimits.applyCharacterCapacity then
             RemoveLimits.applyCharacterCapacity(player)
         end
+    end
+end
+
+local function installAdminSandboxHook()
+    if not ISServerSandboxOptionsUI
+        or type(ISServerSandboxOptionsUI.onButtonApply) ~= "function" then return end
+    if ISServerSandboxOptionsUI[ADMIN_SANDBOX_APPLY_PATCH_KEY] then return end
+
+    local originalOnButtonApply = ISServerSandboxOptionsUI.onButtonApply
+    ISServerSandboxOptionsUI[ADMIN_SANDBOX_APPLY_PATCH_KEY] = originalOnButtonApply
+    ISServerSandboxOptionsUI.onButtonApply = function(panel, ...)
+        local results = { originalOnButtonApply(panel, ...) }
+        -- Also cover changes made through the vanilla Admin → Sandbox Options
+        -- screen, not only this mod's Settings → Mods page.
+        notifyServerSandboxChanged()
+        return unpackValues(results)
     end
 end
 
@@ -157,7 +199,9 @@ end
 local function initializeModOptions()
     pullFromSandbox()
     installMainOptionsHook()
+    installAdminSandboxHook()
 end
 
 installMainOptionsHook()
+installAdminSandboxHook()
 Events.OnGameStart.Add(initializeModOptions)
