@@ -73,7 +73,7 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 [h2]IDs / 编号[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "Fixed multiplayer carry capacity being display-only. Dedicated and co-op servers now apply the server's authoritative sandbox capacity once when each character joins. Applying settings through either Settings → Mods or Admin → Sandbox Options refreshes online players once, with server-side permission validation. Split-screen players are matched correctly. No polling, timers, or periodic overwrites.
+    "changenote"       "Fixed over-capacity item transfers in multiplayer. Items heavier than Build 42's physical capacity ceiling can now move authoritatively between the character inventory, bags, world containers, vehicle containers, and the floor. Ground items are resolved as world objects instead of ordinary containers, fixing floor-to-inventory and floor-to-cabinet transfers. Vanilla distance, safe-floor, favorite-item, item-type, vehicle, safehouse, and transaction checks remain in place. No polling, timers, or periodic overwrites.
 
-修复多人模式下携带容量只有显示变化、服务器实际容量未改变的问题。专用服务器和合作服务器现在会在每名角色进入时，按照服务器沙盒设置一次性应用权威容量。通过“设置 → 模组”或“管理员 → 沙盒设置”应用修改后，会一次性刷新在线玩家，并由服务器验证修改权限；同时正确匹配分屏角色。无轮询、无定时器、无周期覆盖。"
+修复多人模式下超过 Build 42 底层容量上限的物品转移。超重物品现在可以由服务器权威处理，在人物物品栏、背包、世界容器、车辆容器和地面之间正常转移。地面物品会按世界物品解析，不再错误地要求普通所属容器，因此修复了“地面 → 背包”和“地面 → 柜子”。距离、可放置地面、收藏物品、物品类型、车辆、保险屋和多人交易一致性等原版检查仍然保留。无轮询、无定时器、无周期覆盖。"
 }
