@@ -2,6 +2,7 @@ local source = arg[1] or "Contents/mods/RemoveLimits/42/media/lua/shared/RemoveL
 local clientOptions = arg[2] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsModOptions.lua"
 local testItemScript = arg[3] or "Contents/mods/RemoveLimits/42/media/scripts/RemoveLimits_test_item.txt"
 local fluidActions = arg[4] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsFluidActions.lua"
+local transferActions = arg[5] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsTransferActions.lua"
 
 local function readAll(path)
     local file = assert(io.open(path, "rb"))
@@ -12,6 +13,16 @@ end
 
 assert(not readAll(source):find("Events%.OnTick"), "shared capacity logic must not register OnTick")
 assert(not readAll(clientOptions):find("Events%.OnTick"), "mod-options UI must not register OnTick")
+local transferActionLogic = readAll(transferActions)
+assert(not transferActionLogic:find("Events%.OnTick"), "multiplayer transfer bridge must not register OnTick")
+assert(transferActionLogic:find("createItemTransaction = function%(%) return 0 end"),
+    "multiplayer bridge must suppress only the redundant native transaction")
+assert(transferActionLogic:find("CapacityTransferRequest", 1, true) == nil,
+    "network command names must remain owned by the shared authoritative layer")
+assert(transferActionLogic:find("capacityTransferRequestCommand", 1, true),
+    "capacity-only multiplayer transfers must request a server-authoritative move")
+assert(transferActionLogic:find("action:forceComplete%(%)"),
+    "capacity-only multiplayer actions must finish only after the server result")
 local fluidActionLogic = readAll(fluidActions)
 assert(not fluidActionLogic:find("Events%.OnTick"), "fluid action compatibility must not register OnTick")
 assert(fluidActionLogic:find('tooltip%.description == fullInventoryText'), "native menu repair must require the Full Inventory tooltip")
@@ -26,11 +37,20 @@ assert(testItemDefinition:find("OnCreate%s*=%s*RemoveLimits%.onCreateCapacityTes
 assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recipe must consume one ripped sheet")
 assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
-local bootHandlers, createHandlers, fillMenuHandlers = {}, {}, {}
+local bootHandlers, gameStartHandlers, createHandlers, playerUpdateHandlers, fillMenuHandlers = {}, {}, {}, {}, {}
 local clientCommandHandlers, serverCommandHandlers = {}, {}
 Events = {
     OnGameBoot = { Add = function(callback) bootHandlers[#bootHandlers + 1] = callback end },
+    OnGameStart = { Add = function(callback) gameStartHandlers[#gameStartHandlers + 1] = callback end },
     OnCreatePlayer = { Add = function(callback) createHandlers[#createHandlers + 1] = callback end },
+    OnPlayerUpdate = {
+        Add = function(callback) playerUpdateHandlers[#playerUpdateHandlers + 1] = callback end,
+        Remove = function(callback)
+            for index = #playerUpdateHandlers, 1, -1 do
+                if playerUpdateHandlers[index] == callback then table.remove(playerUpdateHandlers, index) end
+            end
+        end,
+    },
     OnFillWorldObjectContextMenu = { Add = function(callback) fillMenuHandlers[#fillMenuHandlers + 1] = callback end },
     OnClientCommand = { Add = function(callback) clientCommandHandlers[#clientCommandHandlers + 1] = callback end },
     OnServerCommand = { Add = function(callback) serverCommandHandlers[#serverCommandHandlers + 1] = callback end },
@@ -97,15 +117,21 @@ containerMethods.setCapacity = function(container, capacity)
     end
     container.rawCapacity = capacity
 end
-containerMethods.hasRoomFor = function()
+containerMethods.hasRoomFor = function(container)
     vanillaHasRoomCalls = vanillaHasRoomCalls + 1
-    return false
+    return container.nativeAllows == true
 end
-containerMethods.getType = function() return "none" end
+containerMethods.getType = function(container) return container.type or "none" end
 containerMethods.getVehiclePart = function() return nil end
-containerMethods.getContainingItem = function() return nil end
+containerMethods.getContainingItem = function(container) return container.containingItem end
 containerMethods.getParent = function(container) return container.owner end
 containerMethods.isItemAllowed = function() return true end
+containerMethods.isRemoveItemAllowed = function() return true end
+containerMethods.contains = function(container, value) return container.containsItem == value end
+containerMethods.getItemWithID = function(container, itemID)
+    return container.containsItem and container.containsItem:getID() == itemID and container.containsItem or nil
+end
+containerMethods.getItemWithIDRecursiv = containerMethods.getItemWithID
 containerMethods.getCapacityWeight = function(container) return container.currentWeight end
 
 characterMethods.getMaxWeight = function(character) return character.rawMaxWeight end
@@ -118,6 +144,8 @@ characterMethods.setMaxWeightBase = function(character, capacity)
     maxWeightBaseFieldWrites = maxWeightBaseFieldWrites + 1
     character.rawMaxWeightBase = capacity
 end
+characterMethods.isUnlimitedCarry = function(character) return character.unlimitedCarry == true end
+characterMethods.setUnlimitedCarry = function(character, enabled) character.unlimitedCarry = enabled == true end
 characterMethods.hasFullInventory = function(character)
     vanillaHasFullInventoryCalls = vanillaHasFullInventoryCalls + 1
     return character:getInventory():getCapacityWeight() >= character:getInventory():getCapacity()
@@ -133,6 +161,8 @@ playerMethods.getMaxWeight = characterMethods.getMaxWeight
 playerMethods.setMaxWeight = characterMethods.setMaxWeight
 playerMethods.getMaxWeightBase = characterMethods.getMaxWeightBase
 playerMethods.setMaxWeightBase = characterMethods.setMaxWeightBase
+playerMethods.isUnlimitedCarry = characterMethods.isUnlimitedCarry
+playerMethods.setUnlimitedCarry = characterMethods.setUnlimitedCarry
 playerMethods.hasFullInventory = characterMethods.hasFullInventory
 playerMethods.getFreeInventoryCapacity = characterMethods.getFreeInventoryCapacity
 
@@ -207,9 +237,11 @@ function instanceof(value, className)
 end
 
 local item = {
-    getUnequippedWeight = function() return 10 end,
-    getActualWeight = function() return 10 end,
+    weight = 10,
+    getUnequippedWeight = function(value) return value.weight end,
+    getActualWeight = function(value) return value.weight end,
 }
+inventory.containsItem = item
 
 assert(loadfile(source))()
 for _, callback in ipairs(bootHandlers) do callback() end
@@ -218,6 +250,7 @@ for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 10000, "unlimited player display capacity")
 assert(player.rawMaxWeight == 10000, "native Heavy Load maxWeight must be configured")
 assert(player.rawMaxWeightBase == 10000, "native recalculation source must be configured")
+assert(player:isUnlimitedCarry(), "native UnlimitedCarry must disable Heavy Load penalties")
 assert(maxWeightFieldWrites == 1, "maxWeight must be written once when the player enters")
 assert(maxWeightBaseFieldWrites == 1, "maxWeightBase must be written once when the player enters")
 assert(npc:getMaxWeight() == 12, "NPC maxWeight must remain vanilla")
@@ -228,16 +261,143 @@ assert(inventory:getEffectiveCapacity(player) == 10000,
 assert(containerMethods.hasRoomFor(inventory, player, item), "unlimited player transfer must be allowed")
 assert(vanillaHasRoomCalls == 0, "unlimited success path must not call vanilla hasRoomFor")
 
--- Build 42's native BodyDamage.UpdateStrength derives maxWeight from
--- maxWeightBase. Simulate repeated native recalculation without invoking any
--- mod callback: the configured source field remains durable and 500 is not
--- considered a Heavy Load against the resulting native maxWeight.
+-- The initial multiplayer character is finalized after OnCreatePlayer. Apply
+-- once at the real OnGameStart boundary; respawns use one player update.
+player.rawMaxWeight = 8
+player.rawMaxWeightBase = 8
+runtimeRole = "client"
+for _, callback in ipairs(createHandlers) do callback(0, player) end
+assert(player.rawMaxWeight == 8 and #playerUpdateHandlers == 0,
+    "initial multiplayer creation must wait for the finished game-start boundary")
+getNumActivePlayers = function() return 1 end
+getSpecificPlayer = function() return player end
+for _, callback in ipairs(gameStartHandlers) do callback() end
+assert(player.rawMaxWeight == 10000 and player.rawMaxWeightBase == 10000,
+    "first entry must apply capacity once after player data finishes loading")
+assert(#playerUpdateHandlers == 0, "first-entry capacity must not leave an update handler registered")
+local firstEntryReadyCommand = sentClientCommands[#sentClientCommands]
+assert(firstEntryReadyCommand.module == "RemoveLimits" and firstEntryReadyCommand.command == "CharacterReady",
+    "first entry must announce readiness after the network player is usable")
+
+-- A later native multiplayer snapshot may replace the private Java fields.
+-- Lua UI and transfer gates must remain mapped to the sandbox capacity without
+-- another write or an update loop.
+player.rawMaxWeight = 11
+player.rawMaxWeightBase = 11
+assert(player:getMaxWeight() == 10000 and player:getMaxWeightBase() == 10000,
+    "native multiplayer field restore must not replace logical sandbox capacity")
+assert(#playerUpdateHandlers == 0, "native field restore must not start a repair loop")
+runtimeRole = "single"
+
+-- Native multiplayer ItemTransaction validation calls Java directly and sees
+-- the physical cap. Verify the bridge selects only the capacity-only mismatch.
+local worldContainer = setmetatable({
+    rawCapacity = 50,
+    currentWeight = 0,
+    owner = { kind = "world" },
+}, { __index = containerMethods })
+item.weight = 150
+worldContainer.containsItem = item
+assert(RemoveLimits.shouldBypassNativeTransfer(player, item, inventory, worldContainer),
+    "multiplayer capacity-only transaction must use the server-timed bridge")
+inventory.nativeAllows = true -- Native UnlimitedCarry says yes; ItemTransaction still sees physical 100.
+assert(RemoveLimits.shouldBypassNativeTransfer(player, item, worldContainer, inventory),
+    "player transfers must bridge the physical cap even when native hasRoomFor sees UnlimitedCarry")
+
+local nativeCreateCalls, nativeRemoveCalls = 0, 0
+local waitForFinished
+createItemTransaction = function()
+    nativeCreateCalls = nativeCreateCalls + 1
+    return 42
+end
+removeItemTransaction = function()
+    nativeRemoveCalls = nativeRemoveCalls + 1
+end
+isItemTransactionDone = function() return true end
+isItemTransactionRejected = function() return true end
+getItemTransactionDuration = function() return 99 end
+isItemTransactionConsistent = function() return false end
+local originalRequireForTransfer = require
+require = function() end
+ISInventoryTransferAction = {
+    isValid = function(action)
+        if action.blockedByAnotherVanillaRule then return false end
+        return isItemTransactionConsistent(action.item, action.srcContainer, action.destContainer)
+    end,
+    start = function(action)
+        action.transactionId = createItemTransaction()
+        action.action:setWaitForFinished(true)
+    end,
+    update = function(action)
+        action.nativeDone = isItemTransactionDone(action.transactionId)
+        action.nativeRejected = isItemTransactionRejected(action.transactionId)
+    end,
+    perform = function(action) removeItemTransaction(action.transactionId, false) end,
+    stop = function(action) removeItemTransaction(action.transactionId, true) end,
+    canMergeAction = function() return true end,
+}
+assert(loadfile(transferActions))()
+require = originalRequireForTransfer
+runtimeRole = "client"
+local transferAction = {
+    character = player,
+    item = item,
+    srcContainer = inventory,
+    destContainer = worldContainer,
+    action = { setWaitForFinished = function(_, value) waitForFinished = value end },
+    forceComplete = function(action) action.serverCompleted = true end,
+    forceStop = function(action) action.serverRejected = true end,
+}
+function item:getID() return 12345 end
+function item:getWorldItem() return self.worldItem end
+function item:getContainer() return self.container end
+local realDescribeTransferContainer = RemoveLimits.describeTransferContainer
+RemoveLimits.describeTransferContainer = function(container)
+    return { kind = container == inventory and "player" or "test-world" }
+end
+setmetatable(transferAction, { __index = ISInventoryTransferAction })
+assert(transferAction:isValid(), "client capacity-only transfer must remain selectable")
+transferAction.blockedByAnotherVanillaRule = true
+assert(not transferAction:isValid(), "capacity bridge must preserve every other vanilla transfer restriction")
+transferAction.blockedByAnotherVanillaRule = false
+transferAction:start()
+assert(nativeCreateCalls == 0 and transferAction.transactionId == 0,
+    "capacity-only transfer must not create a native transaction that Java will reject")
+assert(waitForFinished == true, "capacity-only transfer must wait for the authoritative server result")
+local transferRequest = sentClientCommands[#sentClientCommands]
+assert(transferRequest.module == "RemoveLimits"
+    and transferRequest.command == "CapacityTransferRequest"
+    and transferRequest.arguments.itemID == 12345,
+    "capacity-only transfer must identify the canonical item in its server request")
+transferAction:update()
+assert(transferAction.nativeDone == false and transferAction.nativeRejected == false,
+    "capacity-only transfer must not inherit transaction completion or rejection")
+for _, callback in ipairs(serverCommandHandlers) do
+    callback("RemoveLimits", "CapacityTransferResult", {
+        requestID = transferRequest.arguments.requestID,
+        success = true,
+    })
+end
+assert(transferAction.serverCompleted == true and not transferAction.serverRejected,
+    "successful server result must finish the waiting transfer action")
+transferAction:perform()
+transferAction:stop()
+assert(nativeRemoveCalls == 0, "capacity-only transfer must not remove a transaction that was never created")
+assert(not transferAction:canMergeAction(transferAction),
+    "capacity-only transfers must remain single-item server actions")
+RemoveLimits.describeTransferContainer = realDescribeTransferContainer
+runtimeRole = "single"
+
+-- Build 42 may recalculate the private maxWeight fields after connection.
+-- Simulate that without invoking any mod callback: native UnlimitedCarry and
+-- logical accessors must remain durable without a repair loop.
 for _ = 1, 1000 do
     player.rawMaxWeight = player.rawMaxWeightBase
 end
 inventory.currentWeight = 500
-assert(player.rawMaxWeight == 10000, "native recalculation must preserve configured capacity")
-assert(inventory.currentWeight / player.rawMaxWeight < 1, "500 / 10000 must not trigger Heavy Load")
+assert(player:isUnlimitedCarry(), "native recalculation must not restore Heavy Load penalties")
+assert(player:getMaxWeight() == 10000, "logical capacity must survive native field recalculation")
+assert(inventory.currentWeight / player:getMaxWeight() < 1, "logical 500 / 10000 ratio must remain valid")
 assert(inventory:getCapacityWeight() <= inventory:getEffectiveCapacity(player),
     "vanilla Actions.addOrDropItem must keep crafted outputs above physical capacity 100")
 assert(not player:hasFullInventory(), "fluid actions must not see a full inventory above physical capacity 100")
@@ -261,10 +421,15 @@ assert(fluidOwner:getContainer() == inventory, "fluid bridge must restore the ta
 -- authoritative sandbox capacity and never accepts a capacity from the client.
 runtimeRole = "client"
 for _, callback in ipairs(createHandlers) do callback(0, player) end
+local respawnUpdateSnapshot = { table.unpack(playerUpdateHandlers) }
+for _, callback in ipairs(respawnUpdateSnapshot) do callback(player) end
 local readyCommand = sentClientCommands[#sentClientCommands]
 assert(readyCommand.module == "RemoveLimits" and readyCommand.command == "CharacterReady",
-    "multiplayer client must announce character readiness once")
-assert(next(readyCommand.arguments) == nil, "ready command must not contain a client-selected capacity")
+    "multiplayer respawn must announce character readiness once")
+assert(readyCommand.arguments.onlineID == 101,
+    "ready command must carry a non-empty player identity for Build 42 networking")
+assert(readyCommand.arguments.capacity == nil,
+    "ready command must not contain a client-selected capacity")
 
 local serverPlayer = setmetatable({
     rawMaxWeight = 8,
@@ -315,6 +480,160 @@ assert(serverInventory:hasRoomFor(serverPlayer, item),
 local serverReply = sentServerCommands[#sentServerCommands]
 assert(serverReply.command == "ApplyCharacterCapacity" and serverReply.arguments.onlineID == 201,
     "server must tell the matching client to refresh its local character")
+
+-- Exercise the one-shot authoritative transfer request itself. The server
+-- resolves a bag by its canonical containing-item ID, validates the same
+-- capacity-only mismatch, moves the canonical item, and returns a result.
+local bagOwner = {
+    kind = "item",
+    getID = function() return 9876 end,
+    getContainer = function() return serverInventory end,
+    getMaxItemSize = function() return 0 end,
+}
+local serverBag = setmetatable({
+    rawCapacity = 1,
+    currentWeight = 0,
+    containingItem = bagOwner,
+}, { __index = containerMethods })
+function bagOwner:getInventory() return serverBag end
+serverInventory.containsItem = item
+function serverInventory:getItemWithID(itemID)
+    if itemID == item:getID() then return item end
+    if itemID == bagOwner:getID() then return bagOwner end
+    return nil
+end
+function serverInventory:getItemWithIDRecursiv(itemID) return self:getItemWithID(itemID) end
+function serverBag:getItemWithID(itemID) return self.containsItem and self.containsItem:getID() == itemID and self.containsItem or nil end
+function serverBag:getItemWithIDRecursiv(itemID) return self:getItemWithID(itemID) end
+
+local serverTransferCalls, serverAddNotifications = 0, 0
+ISTransferAction = {
+    canDropOnFloor = function() return true end,
+    transferItem = function(_, _, movedItem, sourceContainer, destinationContainer, dropSquare)
+        serverTransferCalls = serverTransferCalls + 1
+        sourceContainer.containsItem = nil
+        destinationContainer.containsItem = movedItem
+        movedItem.container = destinationContainer
+        if dropSquare then
+            movedItem.worldItem = { getSquare = function() return dropSquare end }
+        else
+            movedItem.worldItem = nil
+        end
+        return movedItem
+    end,
+}
+sendAddItemToContainer = function(destinationContainer, movedItem)
+    assert(destinationContainer == serverBag and movedItem == item,
+        "server add notification must name the resolved destination and canonical item")
+    serverAddNotifications = serverAddNotifications + 1
+end
+local requireBeforeServerTransfer = require
+require = function(module)
+    if module == "TimedActions/ISTransferAction" then return ISTransferAction end
+    return requireBeforeServerTransfer(module)
+end
+local transferRepliesBefore = #sentServerCommands
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "CapacityTransferRequest", serverPlayer, {
+        requestID = 77,
+        itemID = item:getID(),
+        source = { kind = "player" },
+        destination = {
+            kind = "item",
+            itemID = bagOwner:getID(),
+            outer = { kind = "player" },
+        },
+    })
+end
+require = requireBeforeServerTransfer
+assert(serverTransferCalls == 1 and serverAddNotifications == 1,
+    "server must execute and synchronize exactly one validated capacity transfer")
+local transferReply = sentServerCommands[#sentServerCommands]
+assert(#sentServerCommands == transferRepliesBefore + 1
+    and transferReply.command == "CapacityTransferResult"
+    and transferReply.arguments.requestID == 77
+    and transferReply.arguments.success == true,
+    "server must acknowledge the matching successful transfer request")
+
+-- Floor containers are virtual on the client. The authoritative bridge must
+-- recreate one on the server, retain vanilla solid-floor/range validation and
+-- place the item into the world without a container-add packet.
+local floorSquare = {
+    getX = function() return 10 end,
+    getY = function() return 20 end,
+    getZ = function() return 0 end,
+}
+function floorSquare:getWorldObjects()
+    return {
+        size = function() return item:getWorldItem() and 1 or 0 end,
+        get = function() return { getItem = function() return item end } end,
+    }
+end
+function serverPlayer:getX() return 10 end
+function serverPlayer:getY() return 20 end
+function serverPlayer:getZ() return 0 end
+function serverPlayer:getCurrentSquare() return floorSquare end
+getCell = function()
+    return { getGridSquare = function(_, x, y, z)
+        if x == 10 and y == 20 and z == 0 then return floorSquare end
+    end }
+end
+ItemContainer.new = function(containerType)
+    return setmetatable({ type = containerType, rawCapacity = 50, currentWeight = 0 },
+        { __index = containerMethods })
+end
+local floorDescriptor = RemoveLimits.describeTransferContainer(ItemContainer.new("floor"), serverPlayer, item)
+assert(floorDescriptor and floorDescriptor.kind == "floor"
+    and floorDescriptor.x == 10 and floorDescriptor.y == 20,
+    "virtual floor destination must use the player's current square")
+local floorRepliesBefore = #sentServerCommands
+require = function(module)
+    if module == "TimedActions/ISTransferAction" then return ISTransferAction end
+    return requireBeforeServerTransfer(module)
+end
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "CapacityTransferRequest", serverPlayer, {
+        requestID = 78,
+        itemID = item:getID(),
+        source = {
+            kind = "item",
+            itemID = bagOwner:getID(),
+            outer = { kind = "player" },
+        },
+        destination = floorDescriptor,
+    })
+end
+require = requireBeforeServerTransfer
+local floorReply = sentServerCommands[#sentServerCommands]
+assert(#sentServerCommands == floorRepliesBefore + 1
+    and floorReply.arguments.success == true
+    and item:getWorldItem() ~= nil,
+    "server must authoritatively drop an over-50 item onto a valid nearby floor square")
+local floorRoundTripRepliesBefore = #sentServerCommands
+require = function(module)
+    if module == "TimedActions/ISTransferAction" then return ISTransferAction end
+    return requireBeforeServerTransfer(module)
+end
+for _, callback in ipairs(clientCommandHandlers) do
+    callback("RemoveLimits", "CapacityTransferRequest", serverPlayer, {
+        requestID = 79,
+        itemID = item:getID(),
+        source = floorDescriptor,
+        destination = {
+            kind = "item",
+            itemID = bagOwner:getID(),
+            outer = { kind = "player" },
+        },
+    })
+end
+require = requireBeforeServerTransfer
+local floorRoundTripReply = sentServerCommands[#sentServerCommands]
+assert(#sentServerCommands == floorRoundTripRepliesBefore + 1
+    and floorRoundTripReply.arguments.success == true
+    and item:getWorldItem() == nil and serverBag.containsItem == item,
+    "server must resolve the canonical floor item and transfer it back into a container")
+item.weight = 10
+inventory.nativeAllows = false
 
 onlinePlayers = { serverPlayer, regularPlayer }
 SandboxVars.RemoveLimits.CharacterMode = 2
@@ -387,6 +706,7 @@ for _, callback in ipairs(clientCommandHandlers) do
 end
 assert(serverPlayer.rawMaxWeight == 8 and serverInventory.rawCapacity == 50,
     "server live update must restore the original character capacity in Vanilla mode")
+assert(not serverPlayer:isUnlimitedCarry(), "server Vanilla mode must restore native carry behavior")
 assert(regularPlayer.rawMaxWeight == 12 and regularInventory.rawCapacity == 50,
     "server Vanilla restore must preserve each player's own original values")
 
@@ -426,17 +746,21 @@ SandboxVars.RemoveLimits.CharacterMode = 1
 for _, callback in ipairs(createHandlers) do callback(0, player) end
 assert(player:getMaxWeight() == 8, "vanilla player display capacity")
 assert(player.rawMaxWeightBase == 8, "vanilla maxWeightBase restoration")
+assert(not player:isUnlimitedCarry(), "vanilla mode must restore the original UnlimitedCarry flag")
 assert(inventory.rawCapacity == 50, "vanilla physical capacity restoration")
 assert(inventory:getEffectiveCapacity(player) == 50, "vanilla crafted-output capacity must be restored")
+local vanillaHasRoomCallsBeforeVanillaMode = vanillaHasRoomCalls
 assert(not containerMethods.hasRoomFor(inventory, player, item), "vanilla mode must delegate hasRoomFor")
 player:hasFullInventory()
 player:getFreeInventoryCapacity()
 assert(vanillaHasFullInventoryCalls == 1, "vanilla mode must delegate the full-inventory check")
 assert(vanillaFreeCapacityCalls == 1, "vanilla mode must delegate the free-capacity check")
-assert(vanillaHasRoomCalls == 1, "vanilla mode should delegate to vanilla hasRoomFor")
+assert(vanillaHasRoomCalls == vanillaHasRoomCallsBeforeVanillaMode + 1,
+    "vanilla mode should delegate to vanilla hasRoomFor")
 
 assert(containerMethods.hasRoomFor(npcInventory, npc, item) == false, "NPC inventory must remain vanilla")
-assert(vanillaHasRoomCalls == 2, "NPC inventory must delegate to vanilla")
+assert(vanillaHasRoomCalls == vanillaHasRoomCallsBeforeVanillaMode + 2,
+    "NPC inventory must delegate to vanilla")
 
 local testWeight = RemoveLimits.addCapacityTestItem(175, player)
 assert(testWeight.fullType == "RemoveLimits.CapacityTestWeight", "test helper must create the dedicated item")
@@ -561,11 +885,12 @@ assert(takeWaterAction.waterUnit == 9, "water action amount must use configured 
 assert(takeWaterAction.maxTime == 42, "water action duration must be refreshed")
 
 print("capacity regression: PASS")
-print("periodic hooks: 0")
+print("persistent periodic hooks: 0")
+print("first-entry game-start and respawn one-shot lifecycle: PASS")
 print("over-limit physical writes: " .. overLimitWrites)
 print("repeated physical writes during stress loop: 0")
 print("native Heavy Load ratio at 500 / 10000: PASS")
-print("persistent maxWeightBase without polling: PASS")
+print("native UnlimitedCarry and logical accessors without polling: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
 print("custom capacity test item at weight 175: PASS")
 print("generic crafted-output placement above physical capacity 100: PASS")
