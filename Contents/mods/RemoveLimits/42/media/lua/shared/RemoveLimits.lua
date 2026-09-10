@@ -12,6 +12,7 @@ local FREE_INVENTORY_CAPACITY_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGame
 local CHARACTER_MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalGetMaxWeight"
 local CHARACTER_MAX_WEIGHT_BASE_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalGetMaxWeightBase"
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
+local VEHICLE_CONTENT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalSetContainerContentAmount"
 local FLUID_CAN_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalCanTransfer"
 local FLUID_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalTransfer"
 local NETWORK_MODULE = "RemoveLimits"
@@ -70,6 +71,20 @@ local function safeCall(callback, fallback)
     local ok, result = pcall(callback)
     if ok then return result end
     return fallback
+end
+
+local function setUnlimitedCarryState(character, enabled)
+    local cheats = safeCall(function() return character:getCheats() end, nil)
+    local cheatTypes = getCheatTypes and safeCall(getCheatTypes, nil) or nil
+    if cheats and cheatTypes then
+        for index = 0, cheatTypes:size() - 1 do
+            local cheatType = cheatTypes:get(index)
+            if safeCall(function() return cheatType:getTooltip() end, nil) == "UnlimitedCarry" then
+                return safeCall(function() cheats:set(cheatType, enabled == true) end, nil)
+            end
+        end
+    end
+    return safeCall(function() character:setUnlimitedCarry(enabled == true) end, nil)
 end
 
 local function effectiveCharacterCapacity(character)
@@ -608,9 +623,7 @@ local function applyCharacterCapacity(character)
                 else
                     character:setMaxWeight(state.originalMaxWeight)
                 end
-                if type(character.setUnlimitedCarry) == "function" then
-                    character:setUnlimitedCarry(state.originalUnlimitedCarry)
-                end
+                setUnlimitedCarryState(character, state.originalUnlimitedCarry)
             end, nil)
             safeCall(function() inventory:setCapacity(state.originalInventoryCapacity) end, nil)
             state.applied = false
@@ -652,11 +665,9 @@ local function applyCharacterCapacity(character)
     safeCall(function()
         if inventory:getCapacity() ~= inventoryTarget then inventory:setCapacity(inventoryTarget) end
     end, nil)
-    safeCall(function()
-        if type(character.isUnlimitedCarry) == "function"
-            and type(character.setUnlimitedCarry) == "function"
-            and not character:isUnlimitedCarry() then character:setUnlimitedCarry(true) end
-    end, nil)
+    if not safeCall(function() return character:isUnlimitedCarry() end, false) then
+        setUnlimitedCarryState(character, true)
+    end
     state.applied = true
     if state.reportedTarget ~= target then
         print("[RemoveLimits] Character capacity applied: " .. tostring(target)
@@ -883,31 +894,43 @@ local function installVehicleMassPatch()
             return originalUpdateTotalMass(vehicle, ...)
         end
 
-        local ok, err = pcall(function()
-            local installedPartsWeight = 0
-            local parts = vehicle:getParts()
-            for partIndex = 0, parts:size() - 1 do
-                local part = parts:get(partIndex)
-                local item = part and part:getInventoryItem() or nil
-                if item then
-                    installedPartsWeight = installedPartsWeight + (tonumber(item:getWeight()) or 0)
-                end
-            end
+        local initialMass = tonumber(safeCall(function() return vehicle:getInitialMass() end, nil))
+        local cargoMass = tonumber(safeCall(function() return vehicle:getTotalContainerItemWeight() end, nil))
+        if not initialMass or not cargoMass or cargoMass == 0 then
+            return originalUpdateTotalMass(vehicle, ...)
+        end
 
-            local totalMass = math.floor((tonumber(vehicle:getInitialMass()) or 0) + installedPartsWeight + 0.5)
-            vehicle:setMass(totalMass)
-
-            -- BaseVehicle's native update loop forwards getMass()/getFudgedMass()
-            -- to Bullet. Bullet itself is intentionally not exposed to Lua in
-            -- Build 42.20.3, so setting the vehicle mass here is the supported
-            -- route and is picked up on the next vehicle physics update.
-        end)
+        local arguments = { ... }
+        vehicle:setInitialMass(initialMass - cargoMass)
+        local results = { pcall(function()
+            return originalUpdateTotalMass(vehicle, unpackValues(arguments))
+        end) }
+        vehicle:setInitialMass(initialMass)
+        local ok, err = results[1], results[2]
         if not ok then
             if not vehicleMassFailureReported then
                 print("[RemoveLimits] Vehicle cargo mass patch failed; using vanilla mass: " .. tostring(err))
                 vehicleMassFailureReported = true
             end
             return originalUpdateTotalMass(vehicle, ...)
+        end
+        table.remove(results, 1)
+        return unpackValues(results)
+    end
+
+
+    local partMetatable = VehiclePart and VehiclePart.class and __classmetatables[VehiclePart.class]
+    local partMethods = partMetatable and partMetatable.__index
+    if partMethods and type(partMethods.setContainerContentAmount) == "function"
+        and not partMethods[VEHICLE_CONTENT_PATCH_KEY] then
+        local originalSetContainerContentAmount = partMethods.setContainerContentAmount
+        partMethods[VEHICLE_CONTENT_PATCH_KEY] = originalSetContainerContentAmount
+        partMethods.setContainerContentAmount = function(part, ...)
+            local results = { originalSetContainerContentAmount(part, ...) }
+            local vehicle = booleanSetting("IgnoreVehicleCargoMass")
+                and safeCall(function() return part:getVehicle() end, nil) or nil
+            if vehicle then vehicle:updateTotalMass() end
+            return unpackValues(results)
         end
     end
     print("[RemoveLimits] Vehicle cargo mass exclusion patch installed")

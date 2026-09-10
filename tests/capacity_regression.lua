@@ -72,13 +72,23 @@ SandboxVars = { RemoveLimits = {
 } }
 
 local containerMethods, characterMethods, playerMethods = {}, {}, {}
+local vehicleMethods, vehiclePartMethods = {}, {}
 local player, npc
 local onlinePlayers = {}
 local sentClientCommands, sentServerCommands = {}, {}
 ItemContainer = { class = {} }
 IsoGameCharacter = { class = {} }
 IsoPlayer = { class = {} }
+BaseVehicle = { class = {} }
+VehiclePart = { class = {} }
 Capability = { SandboxOptions = {} }
+local unlimitedCarryCheat = { getTooltip = function() return "UnlimitedCarry" end }
+function getCheatTypes()
+    return {
+        size = function() return 1 end,
+        get = function() return unlimitedCarryCheat end,
+    }
+end
 local nativeFluidTransferCalls = 0
 FluidContainer = {
     CanTransfer = function(_, target)
@@ -96,6 +106,8 @@ __classmetatables = {
     [ItemContainer.class] = { __index = containerMethods },
     [IsoGameCharacter.class] = { __index = characterMethods },
     [IsoPlayer.class] = { __index = playerMethods },
+    [BaseVehicle.class] = { __index = vehicleMethods },
+    [VehiclePart.class] = { __index = vehiclePartMethods },
 }
 
 local overLimitWrites = 0
@@ -145,7 +157,17 @@ characterMethods.setMaxWeightBase = function(character, capacity)
     character.rawMaxWeightBase = capacity
 end
 characterMethods.isUnlimitedCarry = function(character) return character.unlimitedCarry == true end
-characterMethods.setUnlimitedCarry = function(character, enabled) character.unlimitedCarry = enabled == true end
+characterMethods.setUnlimitedCarry = function(character, enabled)
+    if character.nativeCarryPermission == false then return end
+    character.unlimitedCarry = enabled == true
+end
+characterMethods.getCheats = function(character)
+    return { set = function(_, cheatType, enabled)
+        assert(cheatType == unlimitedCarryCheat)
+        character.unlimitedCarry = enabled == true
+        character.directCheatWrites = (character.directCheatWrites or 0) + 1
+    end }
+end
 characterMethods.hasFullInventory = function(character)
     vanillaHasFullInventoryCalls = vanillaHasFullInventoryCalls + 1
     return character:getInventory():getCapacityWeight() >= character:getInventory():getCapacity()
@@ -165,6 +187,23 @@ playerMethods.isUnlimitedCarry = characterMethods.isUnlimitedCarry
 playerMethods.setUnlimitedCarry = characterMethods.setUnlimitedCarry
 playerMethods.hasFullInventory = characterMethods.hasFullInventory
 playerMethods.getFreeInventoryCapacity = characterMethods.getFreeInventoryCapacity
+playerMethods.getCheats = characterMethods.getCheats
+
+local nativeVehicleMassUpdates = 0
+local function nativeUpdateTotalMass(vehicle)
+    nativeVehicleMassUpdates = nativeVehicleMassUpdates + 1
+    vehicle.mass = math.floor(vehicle.initialMass + vehicle.installedPartsMass + vehicle.cargoMass + 0.5)
+    vehicle.bulletMass = vehicle.mass
+end
+vehicleMethods.updateTotalMass = nativeUpdateTotalMass
+vehicleMethods.getInitialMass = function(vehicle) return vehicle.initialMass end
+vehicleMethods.setInitialMass = function(vehicle, mass) vehicle.initialMass = mass end
+vehicleMethods.getTotalContainerItemWeight = function(vehicle) return vehicle.cargoMass end
+vehiclePartMethods.getVehicle = function(part) return part.vehicle end
+vehiclePartMethods.setContainerContentAmount = function(part, amount)
+    part.vehicle.cargoMass = amount
+    nativeUpdateTotalMass(part.vehicle)
+end
 
 local adminRole = { hasCapability = function(_, capability) return capability == Capability.SandboxOptions end }
 local regularRole = { hasCapability = function() return false end }
@@ -246,6 +285,23 @@ inventory.containsItem = item
 assert(loadfile(source))()
 for _, callback in ipairs(bootHandlers) do callback() end
 for _, callback in ipairs(createHandlers) do callback(0, player) end
+
+local testVehicle = setmetatable({
+    initialMass = 800,
+    installedPartsMass = 120,
+    cargoMass = 0,
+}, { __index = vehicleMethods })
+local testVehiclePart = setmetatable({ vehicle = testVehicle }, { __index = vehiclePartMethods })
+testVehiclePart:setContainerContentAmount(800)
+assert(testVehicle.initialMass == 800, "vehicle base mass must be restored after native recalculation")
+assert(testVehicle.bulletMass == 920,
+    "vehicle cargo exclusion must update native Bullet mass without stored cargo")
+assert(nativeVehicleMassUpdates == 2,
+    "one cargo change must receive one corrective native mass update without polling")
+SandboxVars.RemoveLimits.IgnoreVehicleCargoMass = false
+testVehiclePart:setContainerContentAmount(800)
+assert(testVehicle.bulletMass == 1720, "vanilla vehicle cargo mass must be restored when disabled")
+SandboxVars.RemoveLimits.IgnoreVehicleCargoMass = true
 
 assert(player:getMaxWeight() == 10000, "unlimited player display capacity")
 assert(player.rawMaxWeight == 10000, "native Heavy Load maxWeight must be configured")
@@ -454,6 +510,7 @@ local regularPlayer = setmetatable({
     kind = "player",
     onlineID = 202,
     role = regularRole,
+    nativeCarryPermission = false,
 }, { __index = playerMethods })
 local regularInventory = setmetatable({
     rawCapacity = 50,
@@ -643,6 +700,8 @@ for _, callback in ipairs(clientCommandHandlers) do
 end
 assert(serverPlayer.rawMaxWeight == 500 and regularPlayer.rawMaxWeight == 500,
     "authorized sandbox update must refresh every online server player once")
+assert(regularPlayer:isUnlimitedCarry() and regularPlayer.directCheatWrites == 1,
+    "ordinary multiplayer players must receive native carry state without admin capability")
 serverInventory.currentWeight = 495
 assert(not serverInventory:hasRoomFor(serverPlayer, item),
     "server custom capacity must reject a transfer that exceeds the authoritative limit")
@@ -891,6 +950,8 @@ print("over-limit physical writes: " .. overLimitWrites)
 print("repeated physical writes during stress loop: 0")
 print("native Heavy Load ratio at 500 / 10000: PASS")
 print("native UnlimitedCarry and logical accessors without polling: PASS")
+print("ordinary multiplayer native carry state without admin capability: PASS")
+print("vehicle cargo exclusion updates native Bullet mass on cargo changes: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
 print("custom capacity test item at weight 175: PASS")
 print("generic crafted-output placement above physical capacity 100: PASS")
