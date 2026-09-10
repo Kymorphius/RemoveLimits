@@ -28,7 +28,7 @@ Separately controls character carry weight, item-transfer weight limits, and veh
 [h2]Settings and compatibility[/h2]
 • Multiplayer settings are controlled by the server's sandbox configuration; regular players have read-only controls
 • Defaults remain unlimited to preserve the behavior of previous releases
-• Updated against Project Zomboid Build 42.20.3 stable
+• Updated against Project Zomboid Build 42.20.4 stable
 • Build 41 retains the original all-unlimited compatibility mode
 • Multiplayer requires the mod on both server and clients
 • Preserves trading, safehouse, and transaction checks
@@ -61,7 +61,7 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 [h2]设置与兼容性[/h2]
 • 多人游戏由服务器沙盒设置统一控制；普通玩家只读
 • 默认仍为角色和容器无限，更新后保持旧版行为
-• 已按 Project Zomboid Build 42.20.3 正式版更新
+• 已按 Project Zomboid Build 42.20.4 正式版更新
 • Build 41 保留原有的全部无限兼容模式
 • 多人游戏需要服务器和客户端同时安装并启用
 • 保留交易、保险屋及多人交易一致性检查
@@ -73,7 +73,7 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 [h2]IDs / 编号[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "Fixed over-capacity item transfers in multiplayer. Items heavier than Build 42's physical capacity ceiling can now move authoritatively between the character inventory, bags, world containers, vehicle containers, and the floor. Ground items are resolved as world objects instead of ordinary containers, fixing floor-to-inventory and floor-to-cabinet transfers. Vanilla distance, safe-floor, favorite-item, item-type, vehicle, safehouse, and transaction checks remain in place. No polling, timers, or periodic overwrites.
+    "changenote"       "Updated for Build 42.20.4. Fixed ordinary multiplayer players still receiving Heavy Load at the displayed custom capacity. Fixed vehicle cargo still increasing Bullet physics mass when cargo-mass exclusion is enabled. Fixed bulk transfers stopping only slightly above a container's original capacity: configured containers now recheck each queued item and switch to the authoritative transfer path when the native limit is crossed. Vanilla mode keeps native transfer batching. No polling, timers, or periodic overwrites.
 
-修复多人模式下超过 Build 42 底层容量上限的物品转移。超重物品现在可以由服务器权威处理，在人物物品栏、背包、世界容器、车辆容器和地面之间正常转移。地面物品会按世界物品解析，不再错误地要求普通所属容器，因此修复了“地面 → 背包”和“地面 → 柜子”。距离、可放置地面、收藏物品、物品类型、车辆、保险屋和多人交易一致性等原版检查仍然保留。无轮询、无定时器、无周期覆盖。"
+适配 Build 42.20.4。修复普通多人玩家在界面显示自定义容量后仍按原版上限进入超重状态；修复开启“货物不计入整车质量”后，货物仍增加 Bullet 物理质量的问题；修复批量转移只能略微超过容器原始容量的问题：启用扩容的容器会逐件按最新重量检查，并在跨过原生上限时切换到服务器权威转移。原版模式仍保留原生批量合并。无轮询、无定时器、无周期覆盖。"
 }
