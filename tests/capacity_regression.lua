@@ -441,6 +441,15 @@ transferAction:stop()
 assert(nativeRemoveCalls == 0, "capacity-only transfer must not remove a transaction that was never created")
 assert(not transferAction:canMergeAction(transferAction),
     "capacity-only transfers must remain single-item server actions")
+item.weight = 10
+worldContainer.currentWeight = 0
+assert(not transferAction:canMergeAction(transferAction),
+    "configured batch transfers must stay separate before crossing the physical limit")
+SandboxVars.RemoveLimits.ContainerMode = 1
+assert(transferAction:canMergeAction(transferAction),
+    "vanilla containers must retain native transfer merging")
+SandboxVars.RemoveLimits.ContainerMode = 3
+item.weight = 150
 RemoveLimits.describeTransferContainer = realDescribeTransferContainer
 runtimeRole = "single"
 

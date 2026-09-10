@@ -26,6 +26,12 @@ local function bypassesNativeTransaction(action, item)
     ) == true
 end
 
+local function usesConfiguredCapacity(action)
+    return action and RemoveLimits
+        and type(RemoveLimits.usesConfiguredTransferCapacity) == "function"
+        and RemoveLimits.usesConfiguredTransferCapacity(action.destContainer) == true
+end
+
 local function withTemporaryGlobals(replacements, callback)
     local originals = {}
     for name, replacement in pairs(replacements) do
@@ -75,8 +81,11 @@ local function installTransferActionBridge()
     end
 
     ISInventoryTransferAction.canMergeAction = function(action, other)
-        if bypassesNativeTransaction(action, action.item)
-            or (other and bypassesNativeTransaction(other, other.item)) then return false end
+        -- A merged native transaction is chosen before earlier queued items
+        -- fill the destination. Keep configured transfers single-item so each
+        -- action rechecks the real weight when it starts and switches to the
+        -- authoritative bridge exactly when the physical limit is crossed.
+        if usesConfiguredCapacity(action) or usesConfiguredCapacity(other) then return false end
         return originals.canMergeAction(action, other)
     end
 

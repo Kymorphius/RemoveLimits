@@ -246,6 +246,11 @@ local function configuredTransferMode(container)
     return category, 1
 end
 
+local function usesConfiguredTransferCapacity(container)
+    local category, mode = configuredTransferMode(container)
+    return mode ~= 1 and category ~= "other-character"
+end
+
 local function unpackHasRoomArguments(...)
     local count = select("#", ...)
     if count >= 2 then
@@ -1144,6 +1149,7 @@ RemoveLimits = RemoveLimits or {}
 RemoveLimits.applyCharacterCapacity = applyCharacterCapacity
 RemoveLimits.getFreeCharacterCapacity = configuredFreeCharacterCapacity
 RemoveLimits.shouldBypassNativeTransfer = shouldBypassNativeTransfer
+RemoveLimits.usesConfiguredTransferCapacity = usesConfiguredTransferCapacity
 RemoveLimits.describeTransferContainer = describeTransferContainer
 RemoveLimits.networkModule = NETWORK_MODULE
 RemoveLimits.capacityTransferRequestCommand = COMMAND_TRANSFER_REQUEST
