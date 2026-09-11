@@ -1,8 +1,7 @@
 local source = arg[1] or "Contents/mods/RemoveLimits/42/media/lua/shared/RemoveLimits.lua"
 local clientOptions = arg[2] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsModOptions.lua"
-local testItemScript = arg[3] or "Contents/mods/RemoveLimits/42/media/scripts/RemoveLimits_test_item.txt"
-local fluidActions = arg[4] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsFluidActions.lua"
-local transferActions = arg[5] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsTransferActions.lua"
+local fluidActions = arg[3] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsFluidActions.lua"
+local transferActions = arg[4] or "Contents/mods/RemoveLimits/42/media/lua/client/RemoveLimitsTransferActions.lua"
 
 local function readAll(path)
     local file = assert(io.open(path, "rb"))
@@ -30,12 +29,6 @@ assert(fluidActionLogic:find('Events%.OnFillWorldObjectContextMenu%.Add'), "nati
 assert(fluidActionLogic:find('ISTakeWaterAction%.isValid = function'), "water timed action validity must use configured capacity")
 assert(fluidActionLogic:find('ISTakeWaterAction%.new = function'), "water timed action amount must use configured free capacity")
 assert(fluidActionLogic:find('ISTakeWaterAction%.transferFluid = function'), "water transfer must use the native fluid bridge")
-local testItemDefinition = readAll(testItemScript)
-assert(testItemDefinition:find("item%s+CapacityTestWeight"), "capacity test item must be defined")
-assert(testItemDefinition:find("Weight%s*=%s*150"), "test item must exercise heavy-output placement directly")
-assert(testItemDefinition:find("OnCreate%s*=%s*RemoveLimits%.onCreateCapacityTestWeight"), "test recipe must preserve its custom weight")
-assert(testItemDefinition:find("item%s+1%s+%[Base%.RippedSheets%]"), "test recipe must consume one ripped sheet")
-assert(testItemDefinition:find("item%s+1%s+RemoveLimits%.CapacityTestWeight"), "test recipe must output the capacity test item")
 
 local bootHandlers, gameStartHandlers, createHandlers, playerUpdateHandlers, fillMenuHandlers = {}, {}, {}, {}, {}
 local clientCommandHandlers, serverCommandHandlers = {}, {}
@@ -830,28 +823,6 @@ assert(containerMethods.hasRoomFor(npcInventory, npc, item) == false, "NPC inven
 assert(vanillaHasRoomCalls == vanillaHasRoomCallsBeforeVanillaMode + 2,
     "NPC inventory must delegate to vanilla")
 
-local testWeight = RemoveLimits.addCapacityTestItem(175, player)
-assert(testWeight.fullType == "RemoveLimits.CapacityTestWeight", "test helper must create the dedicated item")
-assert(testWeight.actualWeight == 175, "test helper must accept a custom actual weight")
-assert(testWeight.weight == 175, "test helper must update the displayed item weight")
-assert(testWeight.customWeight == true, "test helper weight must be persisted as custom")
-assert(inventory.drawDirty == true, "test helper must refresh the inventory display")
-
-inventory.drawDirty = false
-local craftedWeight = inventory:AddItem("RemoveLimits.CapacityTestWeight")
-local createdItems = {
-    size = function() return 1 end,
-    get = function(_, index) if index == 0 then return craftedWeight end end,
-}
-local craftRecipeData = {
-    getAllCreatedItems = function() return createdItems end,
-}
-RemoveLimits.onCreateCapacityTestWeight(craftRecipeData, player)
-assert(craftedWeight.actualWeight == 150, "crafted test item must gain weight after inventory placement")
-assert(craftedWeight.weight == 150, "crafted test item must display weight 150")
-assert(craftedWeight.customWeight == true, "crafted test item weight must persist")
-assert(inventory.drawDirty == true, "crafted test item must refresh the inventory display")
-
 -- Build 42.20's native Java menu bypasses Lua method tables and marks the
 -- top-level Fill option unavailable before returning to Lua. Simulate that
 -- exact result and verify the client compatibility layer repairs only it.
@@ -962,9 +933,7 @@ print("native UnlimitedCarry and logical accessors without polling: PASS")
 print("ordinary multiplayer native carry state without admin capability: PASS")
 print("vehicle cargo exclusion updates native Bullet mass on cargo changes: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
-print("custom capacity test item at weight 175: PASS")
 print("generic crafted-output placement above physical capacity 100: PASS")
-print("crafted test item direct weight 150: PASS")
 print("native Java water menu bypass compatibility: PASS")
 print("dedicated-server character-ready handshake: PASS")
 print("server-authoritative transfer above physical capacity 100: PASS")
