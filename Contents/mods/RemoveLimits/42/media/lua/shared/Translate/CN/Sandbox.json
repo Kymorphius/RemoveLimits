@@ -20,6 +20,8 @@
   "Sandbox_RemoveLimits_AffectWorldContainers_tooltip": "把转移重量模式应用于橱柜、木箱、家具、尸体等世界容器；地面物品安全限制仍保持原版。",
   "Sandbox_RemoveLimits_AffectVehicles": "2. 转移重量——车辆容器",
   "Sandbox_RemoveLimits_AffectVehicles_tooltip": "把转移重量模式应用于后备箱、手套箱、座位以及车辆内存放的包。",
+  "Sandbox_RemoveLimits_AllowSeatWithItems": "2. 转移重量——允许座位与物品共用",
+  "Sandbox_RemoveLimits_AllowSeatWithItems_tooltip": "开启车辆容器扩容时，座位上的物品不会阻止人物入座；已经有人乘坐的座位仍会被占用。",
   "Sandbox_RemoveLimits_IgnoreVehicleCargoMass": "3. 车辆货物质量——忽略车内货物",
     "Sandbox_RemoveLimits_IgnoreVehicleCargoMass_tooltip": "开启后，车辆容器中的物品不会增加车辆物理质量；已安装的车辆部件重量仍会正常计入。"
 }

@@ -36,6 +36,7 @@ local containerMultiplier = options:addTextEntry("ContainerMultiplier", "UI_Remo
 local affectBags = options:addTickBox("AffectBags", "UI_RemoveLimits_AffectBags", true, "UI_RemoveLimits_AffectBags_Tooltip")
 local affectWorldContainers = options:addTickBox("AffectWorldContainers", "UI_RemoveLimits_AffectWorldContainers", true, "UI_RemoveLimits_AffectWorldContainers_Tooltip")
 local affectVehicles = options:addTickBox("AffectVehicles", "UI_RemoveLimits_AffectVehicles", true, "UI_RemoveLimits_AffectVehicles_Tooltip")
+local allowSeatWithItems = options:addTickBox("AllowSeatWithItems", "UI_RemoveLimits_AllowSeatWithItems", true, "UI_RemoveLimits_AllowSeatWithItems_Tooltip")
 
 options:addSeparator()
 options:addDescription("UI_RemoveLimits_VehicleMassSection")
@@ -50,6 +51,7 @@ local editableOptions = {
     affectBags,
     affectWorldContainers,
     affectVehicles,
+    allowSeatWithItems,
     ignoreVehicleCargoMass,
 }
 
@@ -107,6 +109,7 @@ local function pullFromSandbox()
     affectBags:setValue(sandboxValue("AffectBags", true) ~= false)
     affectWorldContainers:setValue(sandboxValue("AffectWorldContainers", true) ~= false)
     affectVehicles:setValue(sandboxValue("AffectVehicles", true) ~= false)
+    allowSeatWithItems:setValue(sandboxValue("AllowSeatWithItems", true) ~= false)
     ignoreVehicleCargoMass:setValue(sandboxValue("IgnoreVehicleCargoMass", true) ~= false)
     setEditable(canEditSandbox())
 end
@@ -120,6 +123,7 @@ local function collectedValues()
         AffectBags = affectBags:getValue() == true,
         AffectWorldContainers = affectWorldContainers:getValue() == true,
         AffectVehicles = affectVehicles:getValue() == true,
+        AllowSeatWithItems = allowSeatWithItems:getValue() == true,
         IgnoreVehicleCargoMass = ignoreVehicleCargoMass:getValue() == true,
     }
 end
@@ -132,6 +136,7 @@ local function normalizeUI(values)
     affectBags:setValue(values.AffectBags)
     affectWorldContainers:setValue(values.AffectWorldContainers)
     affectVehicles:setValue(values.AffectVehicles)
+    allowSeatWithItems:setValue(values.AllowSeatWithItems)
     ignoreVehicleCargoMass:setValue(values.IgnoreVehicleCargoMass)
 end
 

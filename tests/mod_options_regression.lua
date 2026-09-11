@@ -132,15 +132,18 @@ assert(createdOptions.controls.ContainerMultiplier:getValue() == "4")
 assert(createdOptions.controls.AffectBags:getValue() == false)
 assert(createdOptions.controls.AffectWorldContainers:getValue() == true)
 assert(createdOptions.controls.AffectVehicles:getValue() == false)
+assert(createdOptions.controls.AllowSeatWithItems:getValue() == true)
 assert(createdOptions.controls.IgnoreVehicleCargoMass:getValue() == true)
 
 createdOptions.controls.CharacterCapacityLimit:setValue("500")
 createdOptions.controls.ContainerMultiplier:setValue("3")
 createdOptions.controls.AffectBags:setValue(true)
+createdOptions.controls.AllowSeatWithItems:setValue(false)
 createdOptions:apply()
 assert(sandbox["RemoveLimits.CharacterCapacityLimit"] == 500)
 assert(sandbox["RemoveLimits.ContainerMultiplier"] == 3)
 assert(sandbox["RemoveLimits.AffectBags"] == true)
+assert(sandbox["RemoveLimits.AllowSeatWithItems"] == false)
 assert(sandboxObject.toLuaCalls == 1, "single-player apply must call SandboxOptions:toLua once")
 
 clientMode = true

@@ -17,6 +17,8 @@
   "UI_RemoveLimits_AffectWorldContainers_Tooltip": "Apply the selected transfer weight mode to cupboards, crates, furniture, corpses, and other world containers.",
     "UI_RemoveLimits_AffectVehicles": "Affect vehicle containers",
   "UI_RemoveLimits_AffectVehicles_Tooltip": "Apply the selected transfer weight mode to trunks, glove boxes, seats, and bags stored in vehicles.",
+  "UI_RemoveLimits_AllowSeatWithItems": "Allow seats to contain items",
+  "UI_RemoveLimits_AllowSeatWithItems_Tooltip": "When vehicle containers are expanded, items on a seat do not prevent a character from sitting there. A seated character still occupies the seat.",
   "UI_RemoveLimits_VehicleMassSection": "3. Vehicle Cargo Mass — independently controls whether stored cargo affects vehicle physics mass.",
     "UI_RemoveLimits_IgnoreVehicleCargoMass": "Vehicle cargo does not add mass",
     "UI_RemoveLimits_IgnoreVehicleCargoMass_Tooltip": "Items stored in vehicle containers do not increase vehicle physics mass. Installed parts still count.",

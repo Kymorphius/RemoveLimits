@@ -17,6 +17,8 @@
   "UI_RemoveLimits_AffectWorldContainers_Tooltip": "将所选转移重量模式应用到橱柜、木箱、家具、尸体等世界容器。",
     "UI_RemoveLimits_AffectVehicles": "影响车辆容器",
   "UI_RemoveLimits_AffectVehicles_Tooltip": "将所选转移重量模式应用到后备箱、手套箱、座位以及车内的包。",
+  "UI_RemoveLimits_AllowSeatWithItems": "允许座位与物品共用",
+  "UI_RemoveLimits_AllowSeatWithItems_Tooltip": "开启车辆容器扩容时，座位上的物品不会阻止人物入座；已经有人乘坐的座位仍会被占用。",
   "UI_RemoveLimits_VehicleMassSection": "3. 车辆货物质量——独立控制车内货物是否影响车辆物理质量。",
     "UI_RemoveLimits_IgnoreVehicleCargoMass": "车辆货物不计入整车质量",
     "UI_RemoveLimits_IgnoreVehicleCargoMass_Tooltip": "车辆容器中的物品不会增加车辆物理质量；已安装的车辆部件仍会正常计重。",

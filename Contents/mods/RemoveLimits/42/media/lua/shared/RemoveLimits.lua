@@ -13,6 +13,7 @@ local CHARACTER_MAX_WEIGHT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCha
 local CHARACTER_MAX_WEIGHT_BASE_PATCH_KEY = "RemoveCapacityAndPickUpLimits_IsoGameCharacter_originalGetMaxWeightBase"
 local VEHICLE_MASS_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalUpdateTotalMass"
 local VEHICLE_CONTENT_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalSetContainerContentAmount"
+local VEHICLE_SEAT_OCCUPIED_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalIsSeatOccupied"
 local FLUID_CAN_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalCanTransfer"
 local FLUID_TRANSFER_PATCH_KEY = "RemoveCapacityAndPickUpLimits_originalTransfer"
 local NETWORK_MODULE = "RemoveLimits"
@@ -923,6 +924,21 @@ local function installVehicleMassPatch()
         return unpackValues(results)
     end
 
+    if type(methods.isSeatOccupied) == "function" and type(methods.getCharacter) == "function"
+        and not methods[VEHICLE_SEAT_OCCUPIED_PATCH_KEY] then
+        local originalIsSeatOccupied = methods.isSeatOccupied
+        methods[VEHICLE_SEAT_OCCUPIED_PATCH_KEY] = originalIsSeatOccupied
+        methods.isSeatOccupied = function(vehicle, seat)
+            local occupied = originalIsSeatOccupied(vehicle, seat)
+            if not occupied
+                or not booleanSetting("AllowSeatWithItems")
+                or not booleanSetting("AffectVehicles")
+                or numberSetting("ContainerMode", 3) == 1 then return occupied end
+            local character = safeCall(function() return vehicle:getCharacter(seat) end, false)
+            return character ~= nil
+        end
+    end
+
 
     local partMetatable = VehiclePart and VehiclePart.class and __classmetatables[VehiclePart.class]
     local partMethods = partMetatable and partMetatable.__index
@@ -938,7 +954,7 @@ local function installVehicleMassPatch()
             return unpackValues(results)
         end
     end
-    print("[RemoveLimits] Vehicle cargo mass exclusion patch installed")
+    print("[RemoveLimits] Vehicle cargo mass and seat-sharing patches installed")
 end
 
 local function playerOnlineID(player)

@@ -44,6 +44,12 @@ option RemoveLimits.AffectVehicles
     page = RemoveLimits, translation = RemoveLimits_AffectVehicles,
 }
 
+option RemoveLimits.AllowSeatWithItems
+{
+    type = boolean, default = true,
+    page = RemoveLimits, translation = RemoveLimits_AllowSeatWithItems,
+}
+
 option RemoveLimits.IgnoreVehicleCargoMass
 {
     type = boolean, default = true,

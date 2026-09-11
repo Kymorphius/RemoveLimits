@@ -61,6 +61,7 @@ SandboxVars = { RemoveLimits = {
     AffectBags = true,
     AffectWorldContainers = true,
     AffectVehicles = true,
+    AllowSeatWithItems = true,
     IgnoreVehicleCargoMass = true,
 } }
 
@@ -192,6 +193,10 @@ vehicleMethods.updateTotalMass = nativeUpdateTotalMass
 vehicleMethods.getInitialMass = function(vehicle) return vehicle.initialMass end
 vehicleMethods.setInitialMass = function(vehicle, mass) vehicle.initialMass = mass end
 vehicleMethods.getTotalContainerItemWeight = function(vehicle) return vehicle.cargoMass end
+vehicleMethods.getCharacter = function(vehicle, seat) return vehicle.characters and vehicle.characters[seat] end
+vehicleMethods.isSeatOccupied = function(vehicle, seat)
+    return vehicle:getCharacter(seat) ~= nil or (vehicle.seatItems and (vehicle.seatItems[seat] or 0) > 0)
+end
 vehiclePartMethods.getVehicle = function(part) return part.vehicle end
 vehiclePartMethods.setContainerContentAmount = function(part, amount)
     part.vehicle.cargoMass = amount
@@ -283,8 +288,23 @@ local testVehicle = setmetatable({
     initialMass = 800,
     installedPartsMass = 120,
     cargoMass = 0,
+    seatItems = { [0] = 1000 },
+    characters = {},
 }, { __index = vehicleMethods })
 local testVehiclePart = setmetatable({ vehicle = testVehicle }, { __index = vehiclePartMethods })
+assert(not testVehicle:isSeatOccupied(0), "expanded vehicle seat with weight 1000 must allow entry")
+testVehicle.characters[0] = player
+assert(testVehicle:isSeatOccupied(0), "a seated character must still occupy an expanded vehicle seat")
+testVehicle.characters[0] = nil
+SandboxVars.RemoveLimits.AllowSeatWithItems = false
+assert(testVehicle:isSeatOccupied(0), "disabled seat sharing must restore vanilla item occupancy")
+SandboxVars.RemoveLimits.AllowSeatWithItems = true
+SandboxVars.RemoveLimits.ContainerMode = 1
+assert(testVehicle:isSeatOccupied(0), "vanilla vehicle capacity must retain vanilla item occupancy")
+SandboxVars.RemoveLimits.ContainerMode = 3
+SandboxVars.RemoveLimits.AffectVehicles = false
+assert(testVehicle:isSeatOccupied(0), "unaffected vehicle containers must retain vanilla item occupancy")
+SandboxVars.RemoveLimits.AffectVehicles = true
 testVehiclePart:setContainerContentAmount(800)
 assert(testVehicle.initialMass == 800, "vehicle base mass must be restored after native recalculation")
 assert(testVehicle.bulletMass == 920,
