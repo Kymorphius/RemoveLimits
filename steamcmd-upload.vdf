@@ -40,6 +40,9 @@ Separately controls character carry weight, item-transfer weight limits, vehicle
 • Preserves trading, safehouse, and transaction checks
 • Floor-item safety and ItemNumbersLimitPerContainer remain vanilla
 
+[h2]Source Code[/h2]
+[url=https://github.com/Kymorphius/RemoveLimits]GitHub — Kymorphius/RemoveLimits[/url]
+
 [h2]Credits[/h2]
 The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Container Capacity Limit (Workshop 3396168708).
 
@@ -79,15 +82,18 @@ The concept combines Remove Loot Restriction (Workshop 2885648642) and Bypass Co
 • 保留交易、保险屋及多人交易一致性检查
 • 地面物品安全限制及 ItemNumbersLimitPerContainer 服务器上限保持原版
 
+[h2]源代码[/h2]
+[url=https://github.com/Kymorphius/RemoveLimits]GitHub — Kymorphius/RemoveLimits[/url]
+
 [h2]鸣谢[/h2]
 功能构想结合了 Remove Loot Restriction（工坊 2885648642）和 Bypass Container Capacity Limit（工坊 3396168708）。
 
 [h2]IDs / 编号[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "Added complete Russian settings translations. Added an independent, default-enabled option that allows entering vehicle seats containing items. Raised the practical Unlimited limit from 10,000 to 1,000,000. Fixed repeated errors and incorrect Heavy Load state caused by an incompatible PlayerCheats call. Removed bundled test weights.
+    "changenote"       "Added the public GitHub source-code repository to the Workshop description.
 
-新增完整俄语设置翻译；新增独立且默认开启的“允许座位有物品时上车”选项；无限模式实际高上限由 10000 提高到 1000000；修复不兼容的 PlayerCheats 调用导致的持续报错和超重状态异常；移除内置测试砝码。
+在创意工坊详情中新增公开 GitHub 源代码仓库链接。
 
-Добавлен полный русский перевод настроек. Добавлена независимая и включённая по умолчанию возможность садиться на сиденья с предметами. Практический предел режима без ограничений увеличен с 10 000 до 1 000 000. Исправлены повторяющиеся ошибки и неверное состояние перегрузки из-за несовместимого вызова PlayerCheats. Удалены встроенные тестовые гири."
+В описание Workshop добавлена ссылка на общедоступный репозиторий исходного кода на GitHub."
 }
