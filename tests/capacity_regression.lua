@@ -286,10 +286,10 @@ SandboxVars.RemoveLimits.AllowSeatWithItems = false
 assert(testVehicle:isSeatOccupied(0), "disabled seat sharing must restore vanilla item occupancy")
 SandboxVars.RemoveLimits.AllowSeatWithItems = true
 SandboxVars.RemoveLimits.ContainerMode = 1
-assert(testVehicle:isSeatOccupied(0), "vanilla vehicle capacity must retain vanilla item occupancy")
+assert(not testVehicle:isSeatOccupied(0), "seat sharing must remain enabled with vanilla capacity")
 SandboxVars.RemoveLimits.ContainerMode = 3
 SandboxVars.RemoveLimits.AffectVehicles = false
-assert(testVehicle:isSeatOccupied(0), "unaffected vehicle containers must retain vanilla item occupancy")
+assert(not testVehicle:isSeatOccupied(0), "seat sharing must not depend on vehicle capacity settings")
 SandboxVars.RemoveLimits.AffectVehicles = true
 testVehiclePart:setContainerContentAmount(800)
 assert(testVehicle.initialMass == 800, "vehicle base mass must be restored after native recalculation")

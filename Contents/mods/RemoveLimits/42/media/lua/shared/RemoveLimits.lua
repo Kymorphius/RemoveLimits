@@ -920,10 +920,7 @@ local function installVehicleMassPatch()
         methods[VEHICLE_SEAT_OCCUPIED_PATCH_KEY] = originalIsSeatOccupied
         methods.isSeatOccupied = function(vehicle, seat)
             local occupied = originalIsSeatOccupied(vehicle, seat)
-            if not occupied
-                or not booleanSetting("AllowSeatWithItems")
-                or not booleanSetting("AffectVehicles")
-                or numberSetting("ContainerMode", 3) == 1 then return occupied end
+            if not occupied or not booleanSetting("AllowSeatWithItems") then return occupied end
             local character = safeCall(function() return vehicle:getCharacter(seat) end, false)
             return character ~= nil
         end
