@@ -389,12 +389,18 @@ ISInventoryTransferAction = {
     end,
     perform = function(action) removeItemTransaction(action.transactionId, false) end,
     stop = function(action) removeItemTransaction(action.transactionId, true) end,
-    canMergeAction = function() return true end,
+    canMergeAction = function(action, other)
+        if not other or other.Type ~= action.Type then return false end
+        if other.srcContainer ~= action.srcContainer then return false end
+        if other.destContainer ~= action.destContainer then return false end
+        return true
+    end,
 }
 assert(loadfile(transferActions))()
 require = originalRequireForTransfer
 runtimeRole = "client"
 local transferAction = {
+    Type = "ISInventoryTransferAction",
     character = player,
     item = item,
     srcContainer = inventory,
@@ -447,6 +453,8 @@ assert(not transferAction:canMergeAction(transferAction),
 SandboxVars.RemoveLimits.ContainerMode = 1
 assert(transferAction:canMergeAction(transferAction),
     "vanilla containers must retain native transfer merging")
+assert(not transferAction:canMergeAction({ Type = "ISOtherTimedAction" }),
+    "unrelated queued actions without containers must be rejected before capacity inspection")
 SandboxVars.RemoveLimits.ContainerMode = 3
 item.weight = 150
 RemoveLimits.describeTransferContainer = realDescribeTransferContainer

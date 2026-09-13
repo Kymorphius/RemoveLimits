@@ -81,12 +81,13 @@ local function installTransferActionBridge()
     end
 
     ISInventoryTransferAction.canMergeAction = function(action, other)
+        if not originals.canMergeAction(action, other) then return false end
         -- A merged native transaction is chosen before earlier queued items
         -- fill the destination. Keep configured transfers single-item so each
         -- action rechecks the real weight when it starts and switches to the
         -- authoritative bridge exactly when the physical limit is crossed.
         if usesConfiguredCapacity(action) or usesConfiguredCapacity(other) then return false end
-        return originals.canMergeAction(action, other)
+        return true
     end
 
     ISInventoryTransferAction.start = function(action)
