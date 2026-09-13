@@ -302,16 +302,16 @@ testVehiclePart:setContainerContentAmount(800)
 assert(testVehicle.bulletMass == 1720, "vanilla vehicle cargo mass must be restored when disabled")
 SandboxVars.RemoveLimits.IgnoreVehicleCargoMass = true
 
-assert(player:getMaxWeight() == 10000, "unlimited player display capacity")
-assert(player.rawMaxWeight == 10000, "native Heavy Load maxWeight must be configured")
-assert(player.rawMaxWeightBase == 10000, "native recalculation source must be configured")
+assert(player:getMaxWeight() == 1000000, "unlimited player display capacity")
+assert(player.rawMaxWeight == 1000000, "native Heavy Load maxWeight must be configured")
+assert(player.rawMaxWeightBase == 1000000, "native recalculation source must be configured")
 assert(player:isUnlimitedCarry(), "native UnlimitedCarry must disable Heavy Load penalties")
 assert(maxWeightFieldWrites == 1, "maxWeight must be written once when the player enters")
 assert(maxWeightBaseFieldWrites == 1, "maxWeightBase must be written once when the player enters")
 assert(npc:getMaxWeight() == 12, "NPC maxWeight must remain vanilla")
 assert(inventory.rawCapacity == 100, "unlimited physical player capacity must be 100")
 assert(inventory:getCapacity() == 100, "raw player capacity accessor must remain at the physical limit")
-assert(inventory:getEffectiveCapacity(player) == 10000,
+assert(inventory:getEffectiveCapacity(player) == 1000000,
     "generic crafted-output placement must compare against the logical player capacity")
 assert(containerMethods.hasRoomFor(inventory, player, item), "unlimited player transfer must be allowed")
 assert(vanillaHasRoomCalls == 0, "unlimited success path must not call vanilla hasRoomFor")
@@ -327,7 +327,7 @@ assert(player.rawMaxWeight == 8 and #playerUpdateHandlers == 0,
 getNumActivePlayers = function() return 1 end
 getSpecificPlayer = function() return player end
 for _, callback in ipairs(gameStartHandlers) do callback() end
-assert(player.rawMaxWeight == 10000 and player.rawMaxWeightBase == 10000,
+assert(player.rawMaxWeight == 1000000 and player.rawMaxWeightBase == 1000000,
     "first entry must apply capacity once after player data finishes loading")
 assert(#playerUpdateHandlers == 0, "first-entry capacity must not leave an update handler registered")
 local firstEntryReadyCommand = sentClientCommands[#sentClientCommands]
@@ -339,7 +339,7 @@ assert(firstEntryReadyCommand.module == "RemoveLimits" and firstEntryReadyComman
 -- another write or an update loop.
 player.rawMaxWeight = 11
 player.rawMaxWeightBase = 11
-assert(player:getMaxWeight() == 10000 and player:getMaxWeightBase() == 10000,
+assert(player:getMaxWeight() == 1000000 and player:getMaxWeightBase() == 1000000,
     "native multiplayer field restore must not replace logical sandbox capacity")
 assert(#playerUpdateHandlers == 0, "native field restore must not start a repair loop")
 runtimeRole = "single"
@@ -460,12 +460,12 @@ for _ = 1, 1000 do
 end
 inventory.currentWeight = 500
 assert(player:isUnlimitedCarry(), "native recalculation must not restore Heavy Load penalties")
-assert(player:getMaxWeight() == 10000, "logical capacity must survive native field recalculation")
-assert(inventory.currentWeight / player:getMaxWeight() < 1, "logical 500 / 10000 ratio must remain valid")
+assert(player:getMaxWeight() == 1000000, "logical capacity must survive native field recalculation")
+assert(inventory.currentWeight / player:getMaxWeight() < 1, "logical 500 / 1000000 ratio must remain valid")
 assert(inventory:getCapacityWeight() <= inventory:getEffectiveCapacity(player),
     "vanilla Actions.addOrDropItem must keep crafted outputs above physical capacity 100")
 assert(not player:hasFullInventory(), "fluid actions must not see a full inventory above physical capacity 100")
-assert(player:getFreeInventoryCapacity() == 9500, "fluid actions must see native character free capacity")
+assert(player:getFreeInventoryCapacity() == 999500, "fluid actions must see native character free capacity")
 assert(vanillaHasFullInventoryCalls == 0, "configured fluid full check must bypass physical capacity 100")
 assert(vanillaFreeCapacityCalls == 0, "configured fluid free-capacity check must bypass physical capacity 100")
 
@@ -533,11 +533,11 @@ runtimeRole = "server"
 for _, callback in ipairs(clientCommandHandlers) do
     callback("RemoveLimits", "CharacterReady", serverPlayer, {})
 end
-assert(serverPlayer.rawMaxWeight == 10000 and serverPlayer.rawMaxWeightBase == 10000,
+assert(serverPlayer.rawMaxWeight == 1000000 and serverPlayer.rawMaxWeightBase == 1000000,
     "dedicated server must apply authoritative capacity after the ready handshake")
 assert(serverInventory.rawCapacity == 100, "server physical player inventory must remain capped at 100")
 serverInventory.currentWeight = 500
-assert(serverInventory:getEffectiveCapacity(serverPlayer) == 10000,
+assert(serverInventory:getEffectiveCapacity(serverPlayer) == 1000000,
     "server transfer logic must expose the authoritative unlimited capacity")
 assert(serverInventory:hasRoomFor(serverPlayer, item),
     "server must allow an item transfer after physical inventory weight exceeds 100")
@@ -933,7 +933,7 @@ print("persistent periodic hooks: 0")
 print("first-entry game-start and respawn one-shot lifecycle: PASS")
 print("over-limit physical writes: " .. overLimitWrites)
 print("repeated physical writes during stress loop: 0")
-print("native Heavy Load ratio at 500 / 10000: PASS")
+print("native Heavy Load ratio at 500 / 1000000: PASS")
 print("native UnlimitedCarry and logical accessors without polling: PASS")
 print("ordinary multiplayer native carry state: PASS")
 print("vehicle cargo exclusion updates native Bullet mass on cargo changes: PASS")

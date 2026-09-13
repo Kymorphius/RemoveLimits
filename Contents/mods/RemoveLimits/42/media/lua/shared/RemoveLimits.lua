@@ -22,8 +22,8 @@ local COMMAND_SANDBOX_CHANGED = "SandboxChanged"
 local COMMAND_APPLY_CHARACTER = "ApplyCharacterCapacity"
 local COMMAND_TRANSFER_REQUEST = "CapacityTransferRequest"
 local COMMAND_TRANSFER_RESULT = "CapacityTransferResult"
-local UNLIMITED_CHARACTER_CAPACITY = 10000
-local UNLIMITED_CONTAINER_CAPACITY = 10000
+local UNLIMITED_CHARACTER_CAPACITY = 1000000
+local UNLIMITED_CONTAINER_CAPACITY = 1000000
 local MAX_CHARACTER_CONTAINER_CAPACITY = 100
 local unpackValues = unpack or table.unpack
 local characterStates = setmetatable({}, { __mode = "k" })

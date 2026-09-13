@@ -1,7 +1,7 @@
 {
     "Sandbox_RemoveLimits": "Infinite Capacity",
   "Sandbox_RemoveLimits_CharacterMode": "1. Carry Weight — Mode",
-  "Sandbox_RemoveLimits_CharacterMode_tooltip": "Controls the character's real native maximum carry weight, Heavy Load status, displayed limit, and character-inventory transfer limit. Unlimited uses a practical limit of 10000.",
+  "Sandbox_RemoveLimits_CharacterMode_tooltip": "Controls the character's real native maximum carry weight, Heavy Load status, displayed limit, and character-inventory transfer limit. Unlimited uses a practical limit of 1000000.",
     "Sandbox_RemoveLimits_CharacterMode_option1": "Vanilla",
     "Sandbox_RemoveLimits_CharacterMode_option2": "Custom limit",
     "Sandbox_RemoveLimits_CharacterMode_option3": "Unlimited",
