@@ -20,8 +20,8 @@
   "Sandbox_RemoveLimits_AffectWorldContainers_tooltip": "Apply the transfer weight mode to cupboards, crates, furniture, corpses, and other world containers. Floor item safety remains vanilla.",
   "Sandbox_RemoveLimits_AffectVehicles": "2. Transfer Weight — Vehicle containers",
   "Sandbox_RemoveLimits_AffectVehicles_tooltip": "Apply the transfer weight mode to trunks, glove boxes, seats, and bags stored in vehicles.",
-  "Sandbox_RemoveLimits_AllowSeatWithItems": "2. Transfer Weight — Allow seats to contain items",
-  "Sandbox_RemoveLimits_AllowSeatWithItems_tooltip": "When vehicle containers are expanded, items on a seat do not prevent a character from sitting there. A seated character still occupies the seat.",
-  "Sandbox_RemoveLimits_IgnoreVehicleCargoMass": "3. Vehicle Cargo Mass — Ignore stored cargo",
+  "Sandbox_RemoveLimits_AllowSeatWithItems": "3. Vehicle Seats — Allow entry when items are present",
+  "Sandbox_RemoveLimits_AllowSeatWithItems_tooltip": "When enabled, a character may enter a seat even when it contains items; a passenger still occupies the seat. This setting works independently of transfer capacity and vehicle cargo mass settings.",
+  "Sandbox_RemoveLimits_IgnoreVehicleCargoMass": "4. Vehicle Cargo Mass — Ignore stored cargo",
     "Sandbox_RemoveLimits_IgnoreVehicleCargoMass_tooltip": "When enabled, items stored in vehicle containers do not increase the vehicle's physics mass. Installed vehicle parts still count."
 }

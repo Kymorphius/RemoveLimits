@@ -36,6 +36,10 @@ local containerMultiplier = options:addTextEntry("ContainerMultiplier", "UI_Remo
 local affectBags = options:addTickBox("AffectBags", "UI_RemoveLimits_AffectBags", true, "UI_RemoveLimits_AffectBags_Tooltip")
 local affectWorldContainers = options:addTickBox("AffectWorldContainers", "UI_RemoveLimits_AffectWorldContainers", true, "UI_RemoveLimits_AffectWorldContainers_Tooltip")
 local affectVehicles = options:addTickBox("AffectVehicles", "UI_RemoveLimits_AffectVehicles", true, "UI_RemoveLimits_AffectVehicles_Tooltip")
+
+options:addSeparator()
+options:addDescription("UI_RemoveLimits_VehicleSeatSection")
+
 local allowSeatWithItems = options:addTickBox("AllowSeatWithItems", "UI_RemoveLimits_AllowSeatWithItems", true, "UI_RemoveLimits_AllowSeatWithItems_Tooltip")
 
 options:addSeparator()

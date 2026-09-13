@@ -16,8 +16,10 @@ end
 PZAPI = { ModOptions = {
     getOptions = function() return nil end,
     create = function(_, id, name)
-        local options = { id = id, name = name, controls = {} }
-        function options:addDescription() end
+        local options = { id = id, name = name, controls = {}, descriptions = {} }
+        function options:addDescription(key)
+            self.descriptions[#self.descriptions + 1] = key
+        end
         function options:addSeparator() end
         function options:addComboBox(id)
             local value = control(1)
@@ -122,6 +124,13 @@ Events = {
 assert(loadfile(source))()
 assert(createdOptions, "mod options were not created")
 assert(MainOptions.RemoveLimits_originalToUI, "MainOptions.toUI hook was not installed")
+assert(table.concat(createdOptions.descriptions, ",") == table.concat({
+    "UI_RemoveLimits_SyncDescription",
+    "UI_RemoveLimits_CarryWeightSection",
+    "UI_RemoveLimits_TransferWeightSection",
+    "UI_RemoveLimits_VehicleSeatSection",
+    "UI_RemoveLimits_VehicleMassSection",
+}, ","), "vehicle-seat controls must have an independent section")
 
 MainOptions:toUI()
 assert(originalToUICalls == 1, "original MainOptions.toUI must be called exactly once")
