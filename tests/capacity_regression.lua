@@ -11,6 +11,8 @@ local function readAll(path)
 end
 
 assert(not readAll(source):find("Events%.OnTick"), "shared capacity logic must not register OnTick")
+assert(not readAll(source):find("getCheats", 1, true),
+    "native UnlimitedCarry must use IsoGameCharacter:setUnlimitedCarry directly")
 assert(not readAll(clientOptions):find("Events%.OnTick"), "mod-options UI must not register OnTick")
 local transferActionLogic = readAll(transferActions)
 assert(not transferActionLogic:find("Events%.OnTick"), "multiplayer transfer bridge must not register OnTick")
@@ -76,13 +78,6 @@ IsoPlayer = { class = {} }
 BaseVehicle = { class = {} }
 VehiclePart = { class = {} }
 Capability = { SandboxOptions = {} }
-local unlimitedCarryCheat = { getTooltip = function() return "UnlimitedCarry" end }
-function getCheatTypes()
-    return {
-        size = function() return 1 end,
-        get = function() return unlimitedCarryCheat end,
-    }
-end
 local nativeFluidTransferCalls = 0
 FluidContainer = {
     CanTransfer = function(_, target)
@@ -152,15 +147,7 @@ characterMethods.setMaxWeightBase = function(character, capacity)
 end
 characterMethods.isUnlimitedCarry = function(character) return character.unlimitedCarry == true end
 characterMethods.setUnlimitedCarry = function(character, enabled)
-    if character.nativeCarryPermission == false then return end
     character.unlimitedCarry = enabled == true
-end
-characterMethods.getCheats = function(character)
-    return { set = function(_, cheatType, enabled)
-        assert(cheatType == unlimitedCarryCheat)
-        character.unlimitedCarry = enabled == true
-        character.directCheatWrites = (character.directCheatWrites or 0) + 1
-    end }
 end
 characterMethods.hasFullInventory = function(character)
     vanillaHasFullInventoryCalls = vanillaHasFullInventoryCalls + 1
@@ -181,7 +168,6 @@ playerMethods.isUnlimitedCarry = characterMethods.isUnlimitedCarry
 playerMethods.setUnlimitedCarry = characterMethods.setUnlimitedCarry
 playerMethods.hasFullInventory = characterMethods.hasFullInventory
 playerMethods.getFreeInventoryCapacity = characterMethods.getFreeInventoryCapacity
-playerMethods.getCheats = characterMethods.getCheats
 
 local nativeVehicleMassUpdates = 0
 local function nativeUpdateTotalMass(vehicle)
@@ -532,7 +518,6 @@ local regularPlayer = setmetatable({
     kind = "player",
     onlineID = 202,
     role = regularRole,
-    nativeCarryPermission = false,
 }, { __index = playerMethods })
 local regularInventory = setmetatable({
     rawCapacity = 50,
@@ -722,8 +707,8 @@ for _, callback in ipairs(clientCommandHandlers) do
 end
 assert(serverPlayer.rawMaxWeight == 500 and regularPlayer.rawMaxWeight == 500,
     "authorized sandbox update must refresh every online server player once")
-assert(regularPlayer:isUnlimitedCarry() and regularPlayer.directCheatWrites == 1,
-    "ordinary multiplayer players must receive native carry state without admin capability")
+assert(regularPlayer:isUnlimitedCarry(),
+    "ordinary multiplayer players must receive native carry state")
 serverInventory.currentWeight = 495
 assert(not serverInventory:hasRoomFor(serverPlayer, item),
     "server custom capacity must reject a transfer that exceeds the authoritative limit")
@@ -950,7 +935,7 @@ print("over-limit physical writes: " .. overLimitWrites)
 print("repeated physical writes during stress loop: 0")
 print("native Heavy Load ratio at 500 / 10000: PASS")
 print("native UnlimitedCarry and logical accessors without polling: PASS")
-print("ordinary multiplayer native carry state without admin capability: PASS")
+print("ordinary multiplayer native carry state: PASS")
 print("vehicle cargo exclusion updates native Bullet mass on cargo changes: PASS")
 print("fluid/fuel actions above physical capacity 100: PASS")
 print("generic crafted-output placement above physical capacity 100: PASS")

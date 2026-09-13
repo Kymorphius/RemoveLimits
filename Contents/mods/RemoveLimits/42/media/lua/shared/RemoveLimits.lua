@@ -75,16 +75,6 @@ local function safeCall(callback, fallback)
 end
 
 local function setUnlimitedCarryState(character, enabled)
-    local cheats = safeCall(function() return character:getCheats() end, nil)
-    local cheatTypes = getCheatTypes and safeCall(getCheatTypes, nil) or nil
-    if cheats and cheatTypes then
-        for index = 0, cheatTypes:size() - 1 do
-            local cheatType = cheatTypes:get(index)
-            if safeCall(function() return cheatType:getTooltip() end, nil) == "UnlimitedCarry" then
-                return safeCall(function() cheats:set(cheatType, enabled == true) end, nil)
-            end
-        end
-    end
     return safeCall(function() character:setUnlimitedCarry(enabled == true) end, nil)
 end
 
