@@ -131,9 +131,9 @@ Mod ID: RemoveCapacityAndPickUpLimits
 [h2]Идентификаторы[/h2]
 Workshop ID: 3546219719
 Mod ID: RemoveCapacityAndPickUpLimits"
-    "changenote"       "Added a complete Russian section to the Workshop description.
+    "changenote"       "Fixed repeated errors when the transfer queue encounters an action without a destination container.
 
-在创意工坊详情中新增完整俄语说明。
+修复搬运队列遇到没有目标容器的动作时连续报错的问题。
 
-В описание Workshop добавлен полный раздел на русском языке."
+Исправлены повторяющиеся ошибки, когда в очереди перемещения встречается действие без целевого контейнера."
 }
