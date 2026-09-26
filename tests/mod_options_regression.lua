@@ -126,11 +126,12 @@ assert(createdOptions, "mod options were not created")
 assert(MainOptions.RemoveLimits_originalToUI, "MainOptions.toUI hook was not installed")
 assert(table.concat(createdOptions.descriptions, ",") == table.concat({
     "UI_RemoveLimits_SyncDescription",
+    "UI_RemoveLimits_SaveSizeWarning",
     "UI_RemoveLimits_CarryWeightSection",
     "UI_RemoveLimits_TransferWeightSection",
     "UI_RemoveLimits_VehicleSeatSection",
     "UI_RemoveLimits_VehicleMassSection",
-}, ","), "vehicle-seat controls must have an independent section")
+}, ","), "save warning must remain visible and vehicle-seat controls must have an independent section")
 
 MainOptions:toUI()
 assert(originalToUICalls == 1, "original MainOptions.toUI must be called exactly once")

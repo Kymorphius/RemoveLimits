@@ -14,6 +14,7 @@ if PZAPI.ModOptions:getOptions(MOD_OPTIONS_ID) then return end
 
 local options = PZAPI.ModOptions:create(MOD_OPTIONS_ID, "UI_RemoveLimits_Name")
 options:addDescription("UI_RemoveLimits_SyncDescription")
+options:addDescription("UI_RemoveLimits_SaveSizeWarning")
 options:addSeparator()
 options:addDescription("UI_RemoveLimits_CarryWeightSection")
 
